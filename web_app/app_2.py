@@ -21,7 +21,7 @@ import shutil
 
 # Import database module
 from protein_explorer.db import (
-    get_phosphosite_data, get_phosphosites_batch,
+    init_db, get_phosphosite_data, get_phosphosites_batch,
     find_structural_matches, find_structural_matches_batch,
     find_sequence_matches, find_sequence_matches_batch,
     get_kinase_scores, get_kinase_scores_batch
@@ -38,7 +38,7 @@ from protein_explorer.data.scaffold import (
 
 # Import phosphosite analysis functions
 from protein_explorer.analysis.phospho import analyze_phosphosites
-from protein_explorer.analysis.phospho_analyzer import (
+from protein_explorer.analysis.phospho_analyzer_2 import (
     get_phosphosite_data,
     enhance_phosphosite, 
     enhance_structural_matches,
@@ -51,7 +51,7 @@ from protein_explorer.analysis.phospho_analyzer import (
 # Import visualization functions
 from protein_explorer.visualization.network import create_phosphosite_network
 
-from protein_explorer.analysis.sequence_analyzer import (
+from protein_explorer.analysis.sequence_analyzer_2 import (
     find_sequence_matches,
     analyze_motif_conservation,
     create_sequence_network_data,
@@ -59,7 +59,7 @@ from protein_explorer.analysis.sequence_analyzer import (
     create_sequence_motif_visualization
 )
 
-from protein_explorer.analysis.kinase_predictor import (
+from protein_explorer.analysis.kinase_predictor_2 import (
     load_kinase_scores, 
     get_site_kinase_scores,
     predict_kinases,
@@ -70,7 +70,7 @@ from protein_explorer.analysis.kinase_predictor import (
 )
 
 # Import the new network-based functions
-from protein_explorer.analysis.network_kinase_predictor import (
+from protein_explorer.analysis.network_kinase_predictor_2 import (
     get_similar_sites, compute_aggregated_kinase_scores, predict_kinases_network,
     get_network_heatmap_data, get_network_kinase_comparison, 
     get_kinase_family_distribution_network
@@ -79,6 +79,9 @@ from protein_explorer.analysis.network_kinase_predictor import (
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Initialize database connection
+init_db()
 
 # Ensure cache directory exists
 def ensure_cache_directory():
@@ -385,7 +388,6 @@ def protein(identifier):
         print(f"DEBUG: Exception in protein view: {e}")
         logger.error(f"Error in protein view: {e}")
         return render_template('error.html', error=str(e))
-
 
 @app.route('/analyze', methods=['GET', 'POST'])
 def analyze():
@@ -922,7 +924,11 @@ def site_detail(uniprot_id, site):
             
         # 2. Comparative motif visualization
         try:
-            if structural_matches and 'motif' in site_data:
+            if structural_matches and ('motif' in site_data or 'SITE_+/-7_AA' in site_data):
+                # Use SITE_+/-7_AA if motif is not present
+                if 'motif' not in site_data and 'SITE_+/-7_AA' in site_data:
+                    site_data['motif'] = site_data['SITE_+/-7_AA']
+                    
                 motif_html = create_comparative_motif_visualization(site_data, structural_matches)
             else:
                 motif_html = "<div class='alert alert-info'>No motif data available for comparison.</div>"
@@ -962,20 +968,512 @@ def site_detail(uniprot_id, site):
         
         try:
             # Get sequence similarity matches from database
-            sequence_matches = find_sequence_matches(site_id, top_n=200, min_similarity=0.4)
+            sequence_matches = find_sequence_matches(site_id, min_similarity=0.4)
             logger.info(f"Found {len(sequence_matches)} sequence matches")
             
-            # Log a sample of the matches to see what they contain
+            # Sort by similarity (highest first) and take top 200
             if sequence_matches:
+                sequence_matches.sort(key=lambda x: x['similarity'], reverse=True)
+                sequence_matches = sequence_matches[:200]
+                
+                # Log a sample of the matches to see what they contain
                 logger.info(f"Sample match: {sequence_matches[0]}")
                 
                 # Create sequence network data
+                query_motif = site_data.get('motif') or site_data.get('SITE_+/-7_AA')
                 sequence_network_data = create_sequence_network_data(
                     site_id, 
                     sequence_matches,
-                    query_motif=site_data.get('motif') or site_data.get('SITE_+/-7_AA')
+                    query_motif=query_motif
                 )
                 logger.info(f"Created network data with {len(sequence_network_data['nodes'])} nodes")
                 
                 # Create sequence conservation analysis
                 sequence_conservation = analyze_motif_conservation(
+                    sequence_matches,
+                    query_motif=query_motif
+                )
+                logger.info(f"Created conservation analysis with {sequence_conservation['motif_count']} motifs")
+                
+                # Create sequence motif visualization
+                sequence_motif_html = create_sequence_motif_visualization(
+                    site_id,
+                    query_motif,
+                    sequence_matches
+                )
+                logger.info(f"Created motif visualization HTML of length {len(sequence_motif_html) if sequence_motif_html else 0}")
+            else:
+                logger.warning(f"No sequence matches found for {site_id}")
+        except Exception as e:
+            logger.error(f"Error analyzing sequence similarity: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            sequence_matches = []
+        
+        # Standard kinase prediction data
+        structure_kinase_data = {}
+        sequence_kinase_data = {}
+        
+        # Network-based kinase prediction data
+        structure_network_kinase_data = {}
+        sequence_network_kinase_data = {}
+        
+        try:
+            # Standard structural kinase prediction
+            struct_scores = get_site_kinase_scores(site_id, 'structure')
+            if struct_scores and 'scores' in struct_scores:
+                # Get top kinases
+                top_kinases = predict_kinases(site_id, top_n=10, score_type='structure')
+                
+                # Get kinase families
+                kinase_families = categorize_kinases_by_family(top_kinases)
+                
+                # Get known kinase info
+                known_kinase = get_known_kinase_info(site_id, 'structure')
+                
+                # Prepare data for heatmap visualization
+                struct_match_ids = [f"{match['target_uniprot']}_{match['target_site'].replace('S', '').replace('T', '').replace('Y', '')}" 
+                                   for match in structural_matches[:20] if match.get('rmsd', 10) < 5.0]
+                struct_match_ids.insert(0, site_id)  # Add the query site first
+                
+                heatmap_data = get_heatmap_data(struct_match_ids, top_n=10, score_type='structure')
+                
+                # Bundle all data
+                structure_kinase_data = {
+                    'site_id': site_id,
+                    'top_kinases': top_kinases,
+                    'kinase_families': kinase_families,
+                    'known_kinase': known_kinase,
+                    'heatmap': heatmap_data
+                }
+            
+            # Standard sequence kinase prediction
+            seq_scores = get_site_kinase_scores(site_id, 'sequence')
+            if seq_scores and 'scores' in seq_scores:
+                # Get top kinases
+                top_kinases = predict_kinases(site_id, top_n=10, score_type='sequence')
+                
+                # Get kinase families
+                kinase_families = categorize_kinases_by_family(top_kinases)
+                
+                # Get known kinase info
+                known_kinase = get_known_kinase_info(site_id, 'sequence')
+                
+                # Prepare data for heatmap visualization
+                seq_match_ids = []
+                if sequence_matches:
+                    seq_match_ids = [match['target_id'] for match in sequence_matches[:20] 
+                                    if match.get('similarity', 0) > 0.6]
+                    seq_match_ids.insert(0, site_id)  # Add the query site first
+                
+                heatmap_data = get_heatmap_data(seq_match_ids, top_n=10, score_type='sequence')
+                
+                # Bundle all data
+                sequence_kinase_data = {
+                    'site_id': site_id,
+                    'top_kinases': top_kinases,
+                    'kinase_families': kinase_families,
+                    'known_kinase': known_kinase,
+                    'heatmap': heatmap_data
+                }
+            
+            # Network-based kinase predictions
+            try:
+                # 1. Structure network prediction
+                structure_network_kinases = predict_kinases_network(
+                    site_id, top_n=10, score_type='structure',
+                    similarity_threshold=0.6, rmsd_threshold=3.0
+                )
+                
+                if structure_network_kinases:
+                    # Get similar sites
+                    struct_similar_sites = get_similar_sites(
+                        site_id, uniprot_id, site_data,
+                        similarity_threshold=0.6, rmsd_threshold=3.0
+                    )
+                    
+                    # Get heatmap data with enhanced function
+                    struct_heatmap_data = get_network_heatmap_data(
+                        site_id, top_n=10, score_type='structure',
+                        similarity_threshold=0.6, rmsd_threshold=3.0
+                    )
+                    
+                    # Log heatmap data for debugging
+                    logger.info(f"Structure heatmap data: {len(struct_heatmap_data['sites'])} sites, " 
+                                f"{len(struct_heatmap_data['kinases'])} kinases, "
+                                f"{len(struct_heatmap_data['scores'])} scores")
+                    
+                    # Get family distribution
+                    struct_family_dist = get_kinase_family_distribution_network(
+                        site_id, score_type='structure',
+                        similarity_threshold=0.6, rmsd_threshold=3.0
+                    )
+                    
+                    # Combine into data structure
+                    structure_network_kinase_data = {
+                        'site_id': site_id,
+                        'top_kinases': structure_network_kinases,
+                        'heatmap': struct_heatmap_data,
+                        'kinase_families': struct_family_dist,
+                        'site_count': len(struct_similar_sites),
+                        'rmsd_threshold': 3.0,
+                        'similarity_threshold': 0.6
+                    }
+                
+                # 2. Sequence network prediction
+                sequence_network_kinases = predict_kinases_network(
+                    site_id, top_n=10, score_type='sequence',
+                    similarity_threshold=0.6, rmsd_threshold=3.0
+                )
+                
+                if sequence_network_kinases:
+                    # Get similar sites
+                    seq_similar_sites = get_similar_sites(
+                        site_id, uniprot_id, site_data,
+                        similarity_threshold=0.6, rmsd_threshold=3.0
+                    )
+                    
+                    # Get heatmap data with enhanced function
+                    seq_heatmap_data = get_network_heatmap_data(
+                        site_id, top_n=10, score_type='sequence',
+                        similarity_threshold=0.6, rmsd_threshold=3.0
+                    )
+                    
+                    # Log heatmap data for debugging
+                    logger.info(f"Sequence heatmap data: {len(seq_heatmap_data['sites'])} sites, " 
+                                f"{len(seq_heatmap_data['kinases'])} kinases, "
+                                f"{len(seq_heatmap_data['scores'])} scores")
+                    
+                    # Get family distribution
+                    seq_family_dist = get_kinase_family_distribution_network(
+                        site_id, score_type='sequence',
+                        similarity_threshold=0.6, rmsd_threshold=3.0
+                    )
+                    
+                    # Combine into data structure
+                    sequence_network_kinase_data = {
+                        'site_id': site_id,
+                        'top_kinases': sequence_network_kinases,
+                        'heatmap': seq_heatmap_data,
+                        'kinase_families': seq_family_dist,
+                        'site_count': len(seq_similar_sites),
+                        'rmsd_threshold': 3.0,
+                        'similarity_threshold': 0.6
+                    }
+            except Exception as network_e:
+                logger.error(f"Error in network kinase prediction: {network_e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                
+                # Provide minimal fallback data to avoid template errors
+                structure_network_kinase_data = {
+                    'site_id': site_id,
+                    'top_kinases': [],
+                    'heatmap': {'sites': [], 'kinases': [], 'scores': []},
+                    'kinase_families': {},
+                    'site_count': 0,
+                    'rmsd_threshold': 3.0,
+                    'similarity_threshold': 0.6,
+                    'error': str(network_e)
+                }
+                
+                sequence_network_kinase_data = {
+                    'site_id': site_id,
+                    'top_kinases': [],
+                    'heatmap': {'sites': [], 'kinases': [], 'scores': []},
+                    'kinase_families': {},
+                    'site_count': 0,
+                    'rmsd_threshold': 3.0,
+                    'similarity_threshold': 0.6,
+                    'error': str(network_e)
+                }
+
+        except Exception as e:
+            logger.error(f"Error processing kinase data: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+        
+        # Render the template with all the data
+        return render_template(
+            'site.html',
+            protein=protein_data,
+            site=site,
+            site_data=site_data,
+            site_id=site_id,  # Make sure site_id is passed to the template
+            structure_html=structure_html,
+            structural_matches=structural_matches,
+            supplementary_data=site_data,
+            network_html=network_html,
+            motif_html=motif_html,
+            distribution_data=distribution_data,
+            enhanced_3d_html=enhanced_3d_html,
+            context_data=context_data,
+            # Sequence similarity data:
+            sequence_matches=sequence_matches,
+            sequence_network_data=sequence_network_data,
+            sequence_conservation=sequence_conservation,
+            sequence_motif_html=sequence_motif_html,
+            # Standard kinase prediction data:
+            structure_kinase_data=structure_kinase_data,
+            sequence_kinase_data=sequence_kinase_data,
+            # Network kinase prediction data:
+            structure_network_kinase_data=structure_network_kinase_data,
+            sequence_network_kinase_data=sequence_network_kinase_data
+        )
+    except Exception as e:
+        logger.error(f"Error in site detail view: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return render_template('error.html', error=str(e))
+
+@app.route('/site-search', methods=['GET', 'POST'])
+def site_search():
+    """Search for a specific phosphorylation site."""
+    if request.method == 'POST':
+        # Get form data
+        uniprot_id = request.form.get('uniprot_id', '')
+        site = request.form.get('site', '')
+        
+        if not uniprot_id:
+            return render_template('site-search.html', error="Please enter a UniProt ID")
+        
+        if not site:
+            return render_template('site-search.html', error="Please enter a site identifier")
+            
+        # Validate site format (S, T, or Y followed by a number)
+        import re
+        if not re.match(r'^[STY]\d+', site):
+            return render_template('site-search.html', error="Invalid site format. Expected format: S123, T45, Y678, etc.")
+            
+        # Redirect to site detail page
+        return redirect(url_for('site_detail', uniprot_id=uniprot_id, site=site))
+    
+    # GET request - show search form
+    return render_template('site-search.html')
+
+# Add a new API endpoint for kinase data
+@app.route('/api/kinases/<site_id>', methods=['GET'])
+def api_kinases(site_id):
+    """API endpoint for kinase prediction scores."""
+    try:
+        score_type = request.args.get('type', 'structure')
+        top_n = int(request.args.get('top_n', 10))
+        
+        # Get kinase scores
+        scores = get_site_kinase_scores(site_id, score_type)
+        if not scores or 'scores' not in scores:
+            return jsonify({'error': f'No {score_type} kinase scores found for {site_id}'}), 404
+        
+        # Get top predicted kinases
+        top_kinases = predict_kinases(site_id, top_n, score_type)
+        
+        # Get known kinase info
+        known_kinase = get_known_kinase_info(site_id, score_type)
+        
+        # Get comparison with the other score type
+        other_type = 'sequence' if score_type == 'structure' else 'structure'
+        comparison = get_kinase_comparison_data(site_id, [score_type, other_type], top_n)
+        
+        # Return all data
+        return jsonify({
+            'site_id': site_id,
+            'score_type': score_type,
+            'known_kinase': known_kinase,
+            'top_kinases': top_kinases,
+            'comparison': comparison
+        })
+    except Exception as e:
+        logger.error(f"Error in kinase API: {e}")
+        return jsonify({'error': str(e)}), 500
+
+# Add another API endpoint for comparing kinases between sites
+@app.route('/api/kinases/compare', methods=['POST'])
+def api_compare_kinases():
+    """API endpoint for comparing kinase predictions across multiple sites."""
+    try:
+        data = request.get_json()
+        if not data or 'site_ids' not in data:
+            return jsonify({'error': 'Missing site_ids parameter'}), 400
+        
+        site_ids = data['site_ids']
+        score_type = data.get('type', 'structure')
+        top_n = int(data.get('top_n', 10))
+        
+        # Get heatmap data
+        heatmap_data = get_heatmap_data(site_ids, top_n, score_type)
+        
+        # Return the data
+        return jsonify({
+            'heatmap': heatmap_data
+        })
+    except Exception as e:
+        logger.error(f"Error in kinase comparison API: {e}")
+        return jsonify({'error': str(e)}), 500
+    
+# Add a new API endpoint for network-based kinase predictions
+@app.route('/api/network-kinases/<site_id>', methods=['GET'])
+def api_network_kinases(site_id):
+    """API endpoint for network-based kinase prediction scores."""
+    try:
+        score_type = request.args.get('type', 'structure')
+        top_n = int(request.args.get('top_n', 10))
+        similarity_threshold = float(request.args.get('similarity_threshold', 0.6))
+        rmsd_threshold = float(request.args.get('rmsd_threshold', 3.0))
+        
+        # Get network-based kinase predictions
+        network_kinases = predict_kinases_network(
+            site_id, top_n=top_n, score_type=score_type,
+            similarity_threshold=similarity_threshold, 
+            rmsd_threshold=rmsd_threshold
+        )
+        
+        if not network_kinases:
+            return jsonify({'error': f'No {score_type} network kinase scores found for {site_id}'}), 404
+        
+        # Get similar sites
+        similar_sites = get_similar_sites(
+            site_id,
+            similarity_threshold=similarity_threshold, 
+            rmsd_threshold=rmsd_threshold
+        )
+        
+        # Get heatmap data
+        heatmap_data = get_network_heatmap_data(
+            site_id, top_n=top_n, score_type=score_type,
+            similarity_threshold=similarity_threshold, 
+            rmsd_threshold=rmsd_threshold
+        )
+        
+        # Get kinase families
+        kinase_families = get_kinase_family_distribution_network(
+            site_id, score_type=score_type,
+            similarity_threshold=similarity_threshold, 
+            rmsd_threshold=rmsd_threshold
+        )
+        
+        # Return all data
+        return jsonify({
+            'site_id': site_id,
+            'score_type': score_type,
+            'top_kinases': network_kinases,
+            'heatmap': heatmap_data,
+            'kinase_families': kinase_families,
+            'site_count': len(similar_sites),
+            'rmsd_threshold': rmsd_threshold,
+            'similarity_threshold': similarity_threshold
+        })
+    except Exception as e:
+        logger.error(f"Error in network kinase API: {e}")
+        return jsonify({'error': str(e)}), 500
+
+# Add an endpoint to update network predictions with new thresholds
+@app.route('/api/update-network-kinases/<site_id>', methods=['POST'])
+def update_network_kinases(site_id):
+    """Update network-based kinase predictions with new thresholds with enhanced error handling."""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        score_type = data.get('score_type', 'structure')
+        top_n = int(data.get('top_n', 10))
+        
+        # Get appropriate threshold based on score_type
+        if score_type == 'structure':
+            threshold_param = 'rmsd_threshold'
+            threshold_default = 3.0
+        else:  # sequence
+            threshold_param = 'similarity_threshold'
+            threshold_default = 0.6
+            
+        threshold = float(data.get(threshold_param, threshold_default))
+        
+        logger.info(f"Updating {score_type} network kinase predictions with {threshold_param}={threshold}")
+        
+        # Common parameters for all function calls
+        kwargs = {
+            'site_id': site_id,
+            'top_n': top_n,
+            'score_type': score_type
+        }
+        
+        # Add the appropriate threshold parameter
+        if score_type == 'structure':
+            kwargs['rmsd_threshold'] = threshold
+            # Use default for similarity
+            kwargs['similarity_threshold'] = 0.6
+        else:
+            kwargs['similarity_threshold'] = threshold
+            # Use default for RMSD
+            kwargs['rmsd_threshold'] = 3.0
+        
+        # Get updated predictions
+        network_kinases = predict_kinases_network(**kwargs)
+        
+        # Get updated similar sites
+        similar_sites = get_similar_sites(site_id, **{k: v for k, v in kwargs.items() if k != 'top_n'})
+        
+        # Get updated heatmap data with enhanced function
+        try:
+            heatmap_data = get_network_heatmap_data(**kwargs)
+            
+            # Log heatmap data stats to debug any issues
+            logger.info(f"Heatmap data: {len(heatmap_data['sites'])} sites, {len(heatmap_data['kinases'])} kinases, {len(heatmap_data['scores'])} scores")
+            
+            # Add family distribution for radar chart
+            family_distribution = get_kinase_family_distribution_network(
+                site_id, score_type=score_type,
+                similarity_threshold=kwargs.get('similarity_threshold', 0.6),
+                rmsd_threshold=kwargs.get('rmsd_threshold', 3.0)
+            )
+            
+            # Return updated data with full response
+            result = {
+                'site_id': site_id,
+                'score_type': score_type,
+                'top_kinases': network_kinases,
+                'heatmap': heatmap_data,
+                'kinase_families': family_distribution,
+                'site_count': len(similar_sites),
+                'rmsd_threshold': kwargs.get('rmsd_threshold'),
+                'similarity_threshold': kwargs.get('similarity_threshold')
+            }
+            
+            return jsonify(result)
+            
+        except Exception as heatmap_error:
+            # Return basic data if heatmap fails
+            logger.error(f"Error generating heatmap: {heatmap_error}")
+            
+            return jsonify({
+                'site_id': site_id,
+                'score_type': score_type,
+                'top_kinases': network_kinases,
+                'heatmap': {
+                    'sites': [site_id],  # Include at least the query site
+                    'kinases': [k['kinase'] for k in network_kinases[:top_n]],
+                    'scores': []  # Empty scores as fallback
+                },
+                'site_count': len(similar_sites),
+                'rmsd_threshold': kwargs.get('rmsd_threshold'),
+                'similarity_threshold': kwargs.get('similarity_threshold'),
+                'error': f"Heatmap generation failed: {str(heatmap_error)}"
+            })
+            
+    except Exception as e:
+        logger.error(f"Error updating network kinase predictions: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+@app.route('/faq')
+def faq():
+    """Render the FAQ page."""
+    return render_template('faq.html')
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
