@@ -1,5 +1,6 @@
 """
 Functions for kinase prediction based on structural and sequence similarity.
+Uses database queries instead of file loading.
 """
 
 import os
