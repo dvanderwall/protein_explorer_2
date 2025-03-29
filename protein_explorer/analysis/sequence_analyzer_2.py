@@ -15,7 +15,7 @@ from collections import Counter, defaultdict
 import re
 
 # Import database functions
-from protein_explorer.db import (
+from protein_explorer.db.db import (
     get_phosphosite_data, get_phosphosites_batch,
     find_sequence_matches, find_sequence_matches_batch
 )
@@ -50,7 +50,7 @@ def find_sequence_matches(site_id: str,
     """
     try:
         # Get sequence matches from database
-        matches = from protein_explorer.db import find_sequence_matches
+        from protein_explorer.db import find_sequence_matches
         raw_matches = find_sequence_matches(site_id, min_similarity)
         
         if not raw_matches:
@@ -157,6 +157,26 @@ def analyze_motif_conservation(matches: List[Dict],
     logger.info(f"Analyzing conservation with {len(matches)} matches")
     # If no matches, return empty results
     if not matches:
+        return {
+            'motif_count': 0,
+            'conserved_positions': [],
+            'n_term_analysis': {},
+            'c_term_analysis': {},
+            'position_frequencies': {}
+        }
+    
+    # Collect motifs from matches
+    motifs = []
+    for match in matches:
+        if 'motif' in match and match['motif']:
+            motifs.append(match['motif'])
+    
+    # Add query motif if provided
+    if query_motif:
+        motifs = [query_motif] + motifs
+    
+    # If no motifs found, return empty results
+    if not motifs:
         return {
             'motif_count': 0,
             'conserved_positions': [],
@@ -527,25 +547,342 @@ def create_sequence_motif_visualization(query_site_id: str,
         HTML code for the visualization
     """
     # This function generates HTML and doesn't depend on database access,
-    # so it doesn't need to be refactored.': [],
-            'n_term_analysis': {},
-            'c_term_analysis': {},
-            'position_frequencies': {}
-        }
+    # so it doesn't need to be significantly refactored.
     
-    # Collect motifs from matches
-    motifs = []
+    logger.info(f"Creating motif comparison with {len(matches)} matches")
+    logger.info(f"Query motif: {query_motif}")
+
+    # Extract uniprot and site from query_site_id
+    query_parts = query_site_id.split('_')
+    query_uniprot = query_parts[0] if len(query_parts) > 0 else ""
+    query_site = query_parts[1] if len(query_parts) > 1 else ""
+    
+    site_match = re.match(r'([STY])(\d+)', query_site)
+    if site_match:
+        query_site = site_match.group(0)
+    
+    # If the query motif is empty or None, try to get it from supplementary data
+    if not query_motif:
+        try:
+            supp_data = get_phosphosite_data(query_site_id)
+            if supp_data:
+                if 'SITE_+/-7_AA' in supp_data and supp_data['SITE_+/-7_AA']:
+                    query_motif = supp_data['SITE_+/-7_AA']
+                elif 'motif' in supp_data and supp_data['motif']:
+                    query_motif = supp_data['motif']
+                logger.info(f"Retrieved query motif from supplementary data: {query_motif}")
+        except Exception as e:
+            logger.error(f"Error retrieving query motif from supplementary data: {e}")
+    
+    # Filter matches with motifs
+    valid_matches = []
+    match_ids_without_motifs = []
+    
     for match in matches:
-        motif = match.get('motif')
-        if motif:
-            motifs.append(motif)
+        # Check if match already has a motif
+        if 'motif' in match and match['motif']:
+            valid_matches.append(match)
+        else:
+            match_ids_without_motifs.append(match['target_id'])
     
-    # Add query motif if provided
-    if query_motif:
-        motifs = [query_motif] + motifs
+    # Batch query for motifs if needed
+    if match_ids_without_motifs:
+        try:
+            # Get supplementary data for matches without motifs
+            supp_data_batch = get_phosphosites_batch(match_ids_without_motifs)
+            
+            # Add motifs to matches
+            for match in matches:
+                if 'motif' not in match or not match['motif']:
+                    target_id = match['target_id']
+                    if target_id in supp_data_batch:
+                        site_data = supp_data_batch[target_id]
+                        
+                        # Create a new match with the motif added
+                        enhanced_match = match.copy()
+                        
+                        if 'SITE_+/-7_AA' in site_data and site_data['SITE_+/-7_AA']:
+                            enhanced_match['motif'] = site_data['SITE_+/-7_AA']
+                            valid_matches.append(enhanced_match)
+                        elif 'motif' in site_data and site_data['motif']:
+                            enhanced_match['motif'] = site_data['motif']
+                            valid_matches.append(enhanced_match)
+        except Exception as e:
+            logger.error(f"Error retrieving motifs from supplementary data: {e}")
     
-    # If no motifs found, return empty results
-    if not motifs:
-        return {
-            'motif_count': 0,
-            'conserved_positions
+    logger.info(f"Found {len(valid_matches)} matches with motifs after enhancement")
+
+    # If no valid matches, return simple message
+    if not valid_matches:
+        return f"""
+        <div class="alert alert-info">
+            No sequence motif data available for comparison with {query_site_id}.
+        </div>
+        """
+    
+    # Sort by similarity (highest first)
+    sorted_matches = sorted(valid_matches, key=lambda x: x.get('similarity', 0), reverse=True)
+    
+    # Take top N matches
+    top_matches = sorted_matches[:max_matches]
+    
+    # Helper function to get amino acid class for coloring
+    def get_aa_class(aa):
+        if aa == 'X':
+            return "aa-x"
+        elif aa in 'STY':
+            return "sty"
+        elif aa in 'NQ':
+            return "nq"
+        elif aa == 'C':
+            return "cys"
+        elif aa == 'P':
+            return "proline"
+        elif aa in 'AVILMFWG':
+            return "nonpolar"
+        elif aa in 'DE':
+            return "acidic"
+        elif aa in 'KRH':
+            return "basic"
+        else:
+            return "special"
+    
+    # Standardization function for motifs
+    def standardize_motif(motif):
+        # Find the center position (phosphosite)
+        center_pos = len(motif) // 2
+        
+        # Get the phosphosite and parts before/after
+        site_char = motif[center_pos]
+        before_site = motif[:center_pos]
+        after_site = motif[center_pos + 1:]
+        
+        # Ensure we have exactly 7 characters before and after
+        if len(before_site) < 7:
+            before_site = "X" * (7 - len(before_site)) + before_site
+        else:
+            before_site = before_site[-7:]
+            
+        if len(after_site) < 7:
+            after_site = after_site + "X" * (7 - len(after_site))
+        else:
+            after_site = after_site[:7]
+            
+        return before_site + site_char + after_site
+    
+    # Function to trim to just -5 to +5 range for display
+    def trim_to_central_range(motif_str):
+        # We want to keep positions 2-12 (0-indexed) from a 15-char motif
+        # which represent positions -5 to +5 around the phosphosite
+        return motif_str[2:13]
+    
+    # Modified helper function to create HTML for a motif
+    def create_motif_html(motif):
+        # First standardize to full 15 chars
+        std_motif = standardize_motif(motif)
+        
+        # Then trim to -5 to +5 range
+        trimmed_motif = trim_to_central_range(std_motif)
+        
+        # Create HTML
+        html = '<div class="motif-sequence" style="display: flex; flex-wrap: nowrap;">'
+        for i, aa in enumerate(trimmed_motif):
+            aa_class = get_aa_class(aa)
+            highlight_class = "highlighted" if i == 5 else aa_class  # Position 5 is the phosphosite in trimmed motif
+            html += f'<div class="motif-aa {highlight_class}" style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; margin: 0 1px; border-radius: 3px;">{aa}</div>'
+        html += '</div>'
+        return html
+    
+    # Create HTML for the visualization
+    html = """
+    <style>
+        .motif-comparison {
+            font-family: monospace;
+            margin-bottom: 20px;
+        }
+        .motif-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .motif-label {
+            width: 130px;
+            font-weight: bold;
+            text-align: right;
+            padding-right: 10px;
+            font-size: 0.9rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .motif-sequence {
+            display: flex;
+        }
+        .motif-aa {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 1px;
+            border-radius: 3px;
+        }
+        .motif-aa.highlighted {
+            background-color: #ff5722;
+            color: white;
+            font-weight: bold;
+        }
+        .motif-aa.sty {
+            background-color: #bbdefb;
+        }
+        .motif-aa.nq {
+            background-color: #b39ddb;
+        }
+        .motif-aa.cys {
+            background-color: #ffcc80;
+        }
+        .motif-aa.proline {
+            background-color: #81c784;
+        }
+        .motif-aa.nonpolar {
+            background-color: #ffecb3;
+        }
+        .motif-aa.acidic {
+            background-color: #ffcdd2;
+        }
+        .motif-aa.basic {
+            background-color: #c8e6c9;
+        }
+        .motif-aa.special {
+            background-color: #e1bee7;
+        }
+        .motif-aa.aa-x {
+            background-color: #e0e0e0;
+            color: #9e9e9e;
+        }
+        .match-info {
+            margin-left: 10px;
+            font-size: 12px;
+            color: #333;
+        }
+        .motif-position {
+            display: flex;
+            padding-left: 130px;
+            margin-bottom: 10px;
+        }
+        .motif-position span {
+            width: 24px;
+            text-align: center;
+            font-size: 10px;
+            color: #666;
+        }
+    </style>
+    
+    <div class="motif-comparison">
+        <h5 class="mb-3">Sequence Similarity Motif Comparison</h5>
+        
+        <!-- Position markers -->
+        <div class="motif-position">
+    """
+    
+    # Add position markers from -5 to +5
+    for i in range(-5, 6):
+        html += f'<span>{i}</span>'
+    
+    html += """
+        </div>
+    """
+    
+    # Add query motif row
+    html += f"""
+        <div class="motif-row">
+            <div class="motif-label">{query_uniprot}_{query_site}:</div>
+            {create_motif_html(query_motif)}
+            <div class="match-info">
+                Query
+            </div>
+        </div>
+    """
+    
+    # Add match motifs
+    for match in top_matches:
+        motif = match.get('motif', '')
+        target_site = match.get('target_site', 'Unknown')
+        target_uniprot = match.get('target_uniprot', 'Unknown')
+        similarity = match.get('similarity', 0.0)
+        
+        html += f"""
+        <div class="motif-row">
+            <div class="motif-label">{target_uniprot}_{target_site}:</div>
+            {create_motif_html(motif)}
+            <div class="match-info">
+                Similarity: {similarity:.2f} | <a href="/site/{target_uniprot}/{target_site}" class="text-decoration-none">View site</a>
+            </div>
+        </div>
+        """
+    
+    html += """
+    </div>
+    """
+    
+    return html
+
+# Function to batch find sequence matches for multiple sites
+def find_sequence_matches_batch(site_ids: List[str], 
+                              min_similarity: float = 0.4) -> Dict[str, List[Dict]]:
+    """
+    Find sequence similarity matches for multiple sites in a batch.
+    
+    Args:
+        site_ids: List of site IDs in format 'UniProtID_ResidueNumber'
+        min_similarity: Minimum similarity score to include (0-1)
+        
+    Returns:
+        Dictionary mapping site IDs to lists of match dictionaries
+    """
+    try:
+        # Get sequence matches from database in batch
+        from protein_explorer.db import find_sequence_matches_batch
+        raw_matches_dict = find_sequence_matches_batch(site_ids, min_similarity)
+        
+        if not raw_matches_dict:
+            logger.warning(f"No sequence matches found for any of the {len(site_ids)} sites")
+            return {}
+            
+        # Collect all target IDs for batch motif lookup
+        all_target_ids = set()
+        for site_matches in raw_matches_dict.values():
+            for match in site_matches:
+                all_target_ids.add(match['target_id'])
+        
+        # Batch query for motifs
+        supp_data_batch = get_phosphosites_batch(list(all_target_ids))
+        
+        # Process each site's matches
+        result = {}
+        for site_id, matches in raw_matches_dict.items():
+            # Sort by similarity (highest first)
+            sorted_matches = sorted(matches, key=lambda x: x['similarity'], reverse=True)
+            
+            # Enhance with motifs from batch data
+            enhanced_matches = []
+            for match in sorted_matches:
+                enhanced = match.copy()
+                target_id = match['target_id']
+                
+                # Add motif if available in batch data
+                if target_id in supp_data_batch:
+                    site_data = supp_data_batch[target_id]
+                    if 'SITE_+/-7_AA' in site_data and site_data['SITE_+/-7_AA']:
+                        enhanced['motif'] = site_data['SITE_+/-7_AA']
+                    elif 'motif' in site_data and site_data['motif']:
+                        enhanced['motif'] = site_data['motif']
+                
+                enhanced_matches.append(enhanced)
+            
+            result[site_id] = enhanced_matches
+        
+        return result
+    except Exception as e:
+        logger.error(f"Error in batch sequence match finding: {e}")
+        return {}

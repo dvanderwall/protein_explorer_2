@@ -19,13 +19,7 @@ import json
 from typing import Dict, List, Optional
 import shutil
 
-# Import database module
-from protein_explorer.db import (
-    init_db, get_phosphosite_data, get_phosphosites_batch,
-    find_structural_matches, find_structural_matches_batch,
-    find_sequence_matches, find_sequence_matches_batch,
-    get_kinase_scores, get_kinase_scores_batch
-)
+
 
 # Add the parent directory to the path to import protein_explorer
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -34,6 +28,15 @@ import protein_explorer as pe
 from protein_explorer.data.scaffold import (
     get_uniprot_id_from_gene,
     get_protein_by_id
+)
+
+
+# Import database module through the package for consistency
+from protein_explorer.db import (
+    init_db, get_phosphosite_data, get_phosphosites_batch,
+    find_structural_matches, find_structural_matches_batch,
+    find_sequence_matches, find_sequence_matches_batch,
+    get_kinase_scores, get_kinase_scores_batch
 )
 
 # Import phosphosite analysis functions
@@ -547,8 +550,11 @@ def api_phosphosites(uniprot_id):
             
             # Batch retrieve structural matches
             site_ids = [f"{uniprot_id}_{site['resno']}" for site in phosphosites]
+            print("SITE IDS 1")
+            print(site_ids)
             all_matches = find_structural_matches_batch(site_ids, rmsd_threshold=5.0)
-            
+            print("ALL MATCHES 1")
+            print(all_matches)
             # Add matches to each site
             for site in phosphosites:
                 site_id = f"{uniprot_id}_{site['resno']}"
@@ -702,8 +708,11 @@ def phosphosite_analysis():
                 # Try to find structural matches
                 try:
                     # Batch query for structural matches
+                    print("SITE IDS 2")
+                    print(site_ids)
                     all_matches = find_structural_matches_batch(site_ids, rmsd_threshold=5.0)
-                    
+                    print("ALL MATCHES 2")
+                    print(all_matches)
                     # Organize by site
                     structural_matches = {}
                     for site in phosphosites:
