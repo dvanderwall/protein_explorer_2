@@ -2,7 +2,7 @@
 Functions for generating enhanced HTML tables for phosphosite visualization
 with improved metric calculations.
 """
-from protein_explorer.analysis.phospho_analyzer import get_phosphosite_data
+from protein_explorer.analysis.phospho_analyzer_2 import get_phosphosite_data
 def enhance_phosphosite_table(phosphosites, protein_uniprot_id):
     """
     Add data attributes to the phosphosite table HTML for better visualization.

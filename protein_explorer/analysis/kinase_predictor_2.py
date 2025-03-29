@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Union
 import logging
 
 # Import database module
-from protein_explorer.db import get_kinase_scores, get_kinase_scores_batch
+from protein_explorer.db.db import get_kinase_scores, get_kinase_scores_batch
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
