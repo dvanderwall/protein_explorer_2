@@ -568,6 +568,7 @@ def get_phosphosite_data(site_id: str) -> Optional[Dict]:
     """
     Get phosphosite data from the database.
     Uses idx_phosphositeID index for optimized lookup.
+    Ensures that motif sequences are returned in uppercase.
     
     Args:
         site_id: Site ID in format 'UniProtID_ResidueNumber'
@@ -579,7 +580,13 @@ def get_phosphosite_data(site_id: str) -> Optional[Dict]:
     cache_key = f"phosphosite_data_{site_id}"
     if cache_key in QUERY_CACHE and is_cache_valid(cache_key):
         PERFORMANCE_METRICS["cache_hits"] += 1
-        return QUERY_CACHE[cache_key]
+        result = QUERY_CACHE[cache_key]
+        # Ensure motif is uppercase if present
+        if result and ('SITE_+/-7_AA' in result) and result['SITE_+/-7_AA']:
+            result['SITE_+/-7_AA'] = result['SITE_+/-7_AA'].upper()
+        if result and ('motif' in result) and result['motif']:
+            result['motif'] = result['motif'].upper()
+        return result
     
     PERFORMANCE_METRICS["cache_misses"] += 1
     
@@ -597,6 +604,12 @@ def get_phosphosite_data(site_id: str) -> Optional[Dict]:
         # Convert first row to dictionary
         result = df.iloc[0].to_dict()
         
+        # Ensure motif sequences are uppercase
+        if 'SITE_+/-7_AA' in result and result['SITE_+/-7_AA']:
+            result['SITE_+/-7_AA'] = result['SITE_+/-7_AA'].upper()
+        if 'motif' in result and result['motif']:
+            result['motif'] = result['motif'].upper()
+        
         # Cache the result
         QUERY_CACHE[cache_key] = result
         CACHE_TIMESTAMPS[cache_key] = time.time()
@@ -610,6 +623,7 @@ def get_phosphosites_batch(site_ids: List[str]) -> Dict[str, Dict]:
     """
     Get phosphosite data for multiple sites in a batch.
     Uses idx_phosphositeID index for optimized lookup.
+    Ensures that motif sequences are returned in uppercase.
     
     Args:
         site_ids: List of site IDs in format 'UniProtID_ResidueNumber'
@@ -630,6 +644,11 @@ def get_phosphosites_batch(site_ids: List[str]) -> Dict[str, Dict]:
             PERFORMANCE_METRICS["cache_hits"] += 1
             cached_value = QUERY_CACHE[cache_key]
             if cached_value is not None:  # Don't include None values
+                # Ensure motif sequences are uppercase
+                if 'SITE_+/-7_AA' in cached_value and cached_value['SITE_+/-7_AA']:
+                    cached_value['SITE_+/-7_AA'] = cached_value['SITE_+/-7_AA'].upper()
+                if 'motif' in cached_value and cached_value['motif']:
+                    cached_value['motif'] = cached_value['motif'].upper()
                 cached_results[site_id] = cached_value
         else:
             PERFORMANCE_METRICS["cache_misses"] += 1
@@ -656,6 +675,13 @@ def get_phosphosites_batch(site_ids: List[str]) -> Dict[str, Dict]:
                 row_dict = row.to_dict()
                 if "PhosphositeID" in row_dict:
                     site_id = row_dict["PhosphositeID"]
+                    
+                    # Ensure motif sequences are uppercase
+                    if 'SITE_+/-7_AA' in row_dict and row_dict['SITE_+/-7_AA']:
+                        row_dict['SITE_+/-7_AA'] = row_dict['SITE_+/-7_AA'].upper()
+                    if 'motif' in row_dict and row_dict['motif']:
+                        row_dict['motif'] = row_dict['motif'].upper()
+                    
                     # Add to results
                     cached_results[site_id] = row_dict
                     # Also update cache
@@ -852,6 +878,7 @@ def find_sequence_matches(site_id: str, min_similarity: float = 0.4) -> List[Dic
     """
     Find sequence similarity matches for a site.
     Uses composite idx_id1_sim and idx_id2_sim indexes for optimized lookup.
+    Ensures that motif sequences are returned in uppercase.
     
     Args:
         site_id: Site ID in format 'UniProtID_ResidueNumber'
@@ -864,7 +891,12 @@ def find_sequence_matches(site_id: str, min_similarity: float = 0.4) -> List[Dic
     cache_key = f"sequence_matches_{site_id}_{min_similarity}"
     if cache_key in QUERY_CACHE and is_cache_valid(cache_key):
         PERFORMANCE_METRICS["cache_hits"] += 1
-        return QUERY_CACHE[cache_key]
+        matches = QUERY_CACHE[cache_key]
+        # Ensure any motifs in cached matches are uppercase
+        for match in matches:
+            if 'motif' in match and match['motif']:
+                match['motif'] = match['motif'].upper()
+        return matches
     
     PERFORMANCE_METRICS["cache_misses"] += 1
     
@@ -916,6 +948,17 @@ def find_sequence_matches(site_id: str, min_similarity: float = 0.4) -> List[Dic
                         "similarity": similarity
                     }
                     
+                    # Get motif if possible and ensure it's uppercase
+                    try:
+                        target_data = get_phosphosite_data(target_id)
+                        if target_data and 'SITE_+/-7_AA' in target_data and target_data['SITE_+/-7_AA']:
+                            match_dict['motif'] = target_data['SITE_+/-7_AA'].upper()
+                        elif target_data and 'motif' in target_data and target_data['motif']:
+                            match_dict['motif'] = target_data['motif'].upper()
+                    except Exception as e:
+                        # Continue without motif if we can't get it
+                        logger.debug(f"Could not get motif for {target_id}: {e}")
+                    
                     matches.append(match_dict)
         
         # Cache the result
@@ -931,6 +974,7 @@ def find_sequence_matches_batch(site_ids: List[str], min_similarity: float = 0.4
     """
     Find sequence similarity matches for multiple sites in a batch.
     Uses composite idx_id1_sim and idx_id2_sim indexes for optimized lookup.
+    Ensures that motif sequences are returned in uppercase.
     
     Args:
         site_ids: List of site IDs in format 'UniProtID_ResidueNumber'
@@ -950,7 +994,12 @@ def find_sequence_matches_batch(site_ids: List[str], min_similarity: float = 0.4
         cache_key = f"sequence_matches_{site_id}_{min_similarity}"
         if cache_key in QUERY_CACHE and is_cache_valid(cache_key):
             PERFORMANCE_METRICS["cache_hits"] += 1
-            cached_results[site_id] = QUERY_CACHE[cache_key]
+            matches = QUERY_CACHE[cache_key]
+            # Ensure any motifs in cached matches are uppercase
+            for match in matches:
+                if 'motif' in match and match['motif']:
+                    match['motif'] = match['motif'].upper()
+            cached_results[site_id] = matches
         else:
             PERFORMANCE_METRICS["cache_misses"] += 1
             missing_sites.append(site_id)
@@ -1015,6 +1064,17 @@ def find_sequence_matches_batch(site_ids: List[str], min_similarity: float = 0.4
                         "site_type": residue_type,
                         "similarity": similarity
                     }
+                    
+                    # Get motif if possible and ensure it's uppercase
+                    try:
+                        target_data = get_phosphosite_data(target_id)
+                        if target_data and 'SITE_+/-7_AA' in target_data and target_data['SITE_+/-7_AA']:
+                            match_dict['motif'] = target_data['SITE_+/-7_AA'].upper()
+                        elif target_data and 'motif' in target_data and target_data['motif']:
+                            match_dict['motif'] = target_data['motif'].upper()
+                    except Exception as e:
+                        # Continue without motif if we can't get it
+                        logger.debug(f"Could not get motif for {target_id}: {e}")
                     
                     cached_results[query_id].append(match_dict)
         

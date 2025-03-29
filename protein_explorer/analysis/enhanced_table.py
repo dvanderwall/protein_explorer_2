@@ -3,6 +3,11 @@ Functions for generating enhanced HTML tables for phosphosite visualization
 with improved metric calculations.
 """
 from protein_explorer.analysis.phospho_analyzer_2 import get_phosphosite_data
+# Modification to enhance_phosphosite_table in protein_explorer/analysis/enhanced_table.py
+
+# Modify enhance_phosphosite_table in protein_explorer/analysis/enhanced_table.py
+# to handle NaN values properly
+
 def enhance_phosphosite_table(phosphosites, protein_uniprot_id):
     """
     Add data attributes to the phosphosite table HTML for better visualization.
@@ -14,11 +19,18 @@ def enhance_phosphosite_table(phosphosites, protein_uniprot_id):
     Returns:
         HTML string with the enhanced phosphosite table
     """
+    import numpy as np
+    import math
+    
     if not phosphosites:
         return "<div class='alert alert-warning'>No phosphosite data available.</div>"
     
     # Calculate additional metrics for each site if not already present
     for site in phosphosites:
+        # Convert motif to uppercase if present
+        if 'motif' in site and site['motif']:
+            site['motif'] = site['motif'].upper()
+            
         if 'motif' in site:
             # Calculate metrics based on motif if available
             if 'acidicPercentage' not in site:
@@ -37,7 +49,20 @@ def enhance_phosphosite_table(phosphosites, protein_uniprot_id):
         if 'bFactorGradient' not in site:
             import random
             site['bFactorGradient'] = random.uniform(5, 30)
+            
+        # Ensure surface accessibility is calculated for all sites
+        if 'surfaceAccessibility' not in site and 'surface_accessibility' not in site:
+            # If we can compute from nearby_count, do that
+            if 'nearby_count' in site:
+                max_neighbors = 30  # Approximate maximum reasonable number of neighbors in 8Å
+                nearby_count = site.get('nearby_count', 0)
+                surface_accessibility = max(0, min(100, (max_neighbors - nearby_count) / max_neighbors * 100))
+                site['surfaceAccessibility'] = surface_accessibility
+            else:
+                # Default value if we can't calculate
+                site['surfaceAccessibility'] = 50.0  # Middle value as default
     
+    # Generate the HTML
     html = """
     <div class="card mt-4">
         <div class="card-header">
@@ -76,34 +101,68 @@ def enhance_phosphosite_table(phosphosites, protein_uniprot_id):
         # Extract all the available metrics
         site_type = site.get('siteType', site.get('site', '')[0])
         resno = site.get('resno', 0)
+        
+        # Handle nearby count - make sure it's a valid number
         nearby_count = site.get('nearbyCount', site.get('nearby_count', 0))
+        if isinstance(nearby_count, (str, float)) and (str(nearby_count).lower() == 'nan' or math.isnan(float(nearby_count))):
+            nearby_count = 6  # Default value for nearby residues if NaN
+        
         is_known = site.get('isKnown', site.get('is_known', False))
         motif = site.get('motif', '')
         
-        # Get mean pLDDT - handle string values properly
+        # Get mean pLDDT - handle string values and NaN properly
         try:
-            mean_plddt = float(site.get('meanPLDDT', site.get('mean_plddt', 0)))
-            mean_plddt_text = f"{mean_plddt}"
+            mean_plddt_value = site.get('meanPLDDT', site.get('mean_plddt', 0))
+            
+            # Check for NaN values in various formats
+            if isinstance(mean_plddt_value, str) and mean_plddt_value.lower() == 'nan':
+                mean_plddt = 50.0  # Default value
+                mean_plddt_text = f"{mean_plddt:.1f}"
+            elif isinstance(mean_plddt_value, float) and math.isnan(mean_plddt_value):
+                mean_plddt = 50.0  # Default value
+                mean_plddt_text = f"{mean_plddt:.1f}"
+            else:
+                mean_plddt = float(mean_plddt_value)
+                mean_plddt_text = f"{mean_plddt:.1f}"
         except (ValueError, TypeError):
-            mean_plddt = 0
-            mean_plddt_text = site.get('meanPLDDT', site.get('mean_plddt', 'N/A'))
-            if isinstance(mean_plddt_text, str) and mean_plddt_text.strip() == '':
-                mean_plddt_text = 'N/A'
+            mean_plddt = 50.0  # Default value
+            mean_plddt_text = f"{mean_plddt:.1f}"
         
-        # Get metrics with various possible key names - handle string values properly
+        # Get metrics with various possible key names - handle string values and NaN properly
         try:
-            surface_accessibility = float(site.get('surfaceAccessibility', site.get('surface_accessibility', 0)))
+            surface_accessibility_value = site.get('surfaceAccessibility', site.get('surface_accessibility', 0))
+            
+            # Check for NaN values in various formats
+            if isinstance(surface_accessibility_value, str) and surface_accessibility_value.lower() == 'nan':
+                surface_accessibility = 50.0  # Default value
+            elif isinstance(surface_accessibility_value, float) and math.isnan(surface_accessibility_value):
+                surface_accessibility = 50.0  # Default value
+            else:
+                surface_accessibility = float(surface_accessibility_value)
+                
             surface_access_text = f"{surface_accessibility:.1f}%"
         except (ValueError, TypeError):
-            surface_accessibility = 0
-            surface_access_text = "N/A"
+            # Default value if conversion fails
+            surface_accessibility = 50.0
+            surface_access_text = f"{surface_accessibility:.1f}%"
         
+        # Get site pLDDT - handle NaN properly
         try:
-            site_plddt = float(site.get('site_plddt', mean_plddt))
-            site_plddt_text = f"{site_plddt:.1f}"
+            site_plddt_value = site.get('site_plddt', mean_plddt)
+            
+            # Check for NaN values in various formats
+            if isinstance(site_plddt_value, str) and site_plddt_value.lower() == 'nan':
+                site_plddt = mean_plddt  # Use mean pLDDT as fallback
+                site_plddt_text = f"{site_plddt:.1f}"
+            elif isinstance(site_plddt_value, float) and math.isnan(site_plddt_value):
+                site_plddt = mean_plddt  # Use mean pLDDT as fallback
+                site_plddt_text = f"{site_plddt:.1f}"
+            else:
+                site_plddt = float(site_plddt_value)
+                site_plddt_text = f"{site_plddt:.1f}"
         except (ValueError, TypeError):
-            site_plddt = 0
-            site_plddt_text = "N/A"
+            site_plddt = mean_plddt  # Use mean pLDDT as fallback
+            site_plddt_text = f"{site_plddt:.1f}"
         
         # Get additional metrics - handle string values properly
         try:
@@ -133,6 +192,7 @@ def enhance_phosphosite_table(phosphosites, protein_uniprot_id):
         
         # NEW: Determine if the site has complete structural analysis
         site_id = f"{protein_uniprot_id}_{resno}"
+        from protein_explorer.analysis.phospho_analyzer_2 import get_phosphosite_data
         supp_data = get_phosphosite_data(site_id)
         if supp_data is not None:
             # Site is analyzed: color green (e.g., light green)

@@ -5,6 +5,8 @@ This version uses database queries instead of file loading, but maintains
 the same functionality and output as the original application.
 """
 
+
+
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 import os
 import sys
@@ -78,6 +80,7 @@ from protein_explorer.analysis.network_kinase_predictor_2 import (
     get_network_heatmap_data, get_network_kinase_comparison, 
     get_kinase_family_distribution_network
 )
+from protein_explorer.visualization.protein_phosphosite_network import create_phosphosite_network_visualization
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -744,12 +747,20 @@ def phosphosite_analysis():
                 # Add the HTML to the results
                 results['phosphosites_html'] = phosphosites_html
             
-            # Return results including enhanced data
+            # Generate network visualization
+            network_visualization = create_phosphosite_network_visualization(
+                results['protein_info']['uniprot_id'],
+                results['phosphosites'],
+                results['structural_matches']
+            )
+            
+            # Return results including enhanced data and network visualization
             return render_template('phosphosite.html', 
                                   protein_info=results['protein_info'],
                                   phosphosites=results['phosphosites'],
                                   phosphosites_html=results.get('phosphosites_html'),
                                   structural_matches=results['structural_matches'],
+                                  network_visualization=network_visualization,
                                   error=results.get('error'))
                 
         except Exception as e:

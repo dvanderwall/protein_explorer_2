@@ -23,7 +23,7 @@ from protein_explorer.analysis.kinase_predictor import (
 )
 
 # Import modules for structural and sequence similarity
-from protein_explorer.db import (
+from protein_explorer.db.db import (
     get_phosphosite_data, find_structural_matches, find_sequence_matches
 )
 
@@ -147,7 +147,7 @@ def get_network_kinase_scores(site_id: str, score_type: str = 'structure',
                                      rmsd_threshold=rmsd_threshold)
     
     # Get scores for all sites in batch
-    from protein_explorer.db import get_kinase_scores_batch
+    from protein_explorer.db.db import get_kinase_scores_batch
     all_scores_batch = get_kinase_scores_batch(similar_sites, score_type)
     
     # Format results as expected

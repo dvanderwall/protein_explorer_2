@@ -15,3 +15,7 @@ from protein_explorer.visualization.network import (
     visualize_clusters,
     create_network_figure
 )
+
+from protein_explorer.visualization.protein_phosphosite_network import (
+    create_phosphosite_network_visualization
+)

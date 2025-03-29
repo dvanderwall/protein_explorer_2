@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Union, Tuple
 import logging
 from protein_explorer.analysis.phospho import analyze_phosphosites
 from protein_explorer.data.scaffold import get_protein_by_id, get_alphafold_structure
-from protein_explorer.db import (
+from protein_explorer.db.db import (
     get_phosphosite_data, get_phosphosites_batch,
     find_structural_matches, find_structural_matches_batch
 )
@@ -88,6 +88,7 @@ def enhance_phosphosite(phosphosite: Dict, uniprot_id: str) -> Dict:
 def enhance_structural_matches(matches: List[Dict], site: str) -> List[Dict]:
     """
     Enhance structural matches with supplementary data.
+    Ensures motif sequences in matches are uppercase.
     
     Args:
         matches: List of structural match dictionaries
@@ -131,7 +132,11 @@ def enhance_structural_matches(matches: List[Dict], site: str) -> List[Dict]:
                     enhanced_match['nearby_count'] = target_supp['nearby_count']
                 
                 if 'SITE_+/-7_AA' in target_supp and target_supp['SITE_+/-7_AA'] is not None:
-                    enhanced_match['motif'] = target_supp['SITE_+/-7_AA']
+                    # Ensure the motif is uppercase
+                    enhanced_match['motif'] = target_supp['SITE_+/-7_AA'].upper()
+                elif 'motif' in target_supp and target_supp['motif'] is not None:
+                    # Alternative motif field, also ensure uppercase
+                    enhanced_match['motif'] = target_supp['motif'].upper()
                 
                 # Add additional fields
                 for key in ['site_plddt', 'surface_accessibility', 'secondary_structure']:
@@ -142,9 +147,13 @@ def enhance_structural_matches(matches: List[Dict], site: str) -> List[Dict]:
                 continue
         
         # If no supplementary data, just add the original match
+        # Make sure any existing motif is uppercase
+        if 'motif' in match and match['motif']:
+            match['motif'] = match['motif'].upper()
         enhanced_matches.append(match)
     
     return enhanced_matches
+
 
 def get_phosphosites(uniprot_id: str) -> List[Dict]:
     """
