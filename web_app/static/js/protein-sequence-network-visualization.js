@@ -1,9 +1,11 @@
+
 /**
  * Enhanced Sequence Network Visualization
  * Creates an interactive visualization of phosphosite sequence similarity networks
  * - Filters out phosphosites with Tyrosine (Y)
  * - Ensures motifs are displayed in tooltips
  * - Shows kinase information when available
+ * - Properly handles coloring nodes with known kinases
  */
 
 function sequenceNetworkVisualization(proteinUniprotId) {
@@ -75,29 +77,34 @@ function sequenceNetworkVisualization(proteinUniprotId) {
     
     // Helper functions for styling
     function getNodeColor(d) {
+        // First check if node has a known kinase (regardless of type)
+        if (d.known_kinase) {
+            return '#9C27B0'; // Magenta for any site with a known kinase
+        }
+        
+        // Then check node type
         if (d.type === 'protein') {
-            // First check if site has a known kinase
-            if (d.known_kinase) {
-                return '#8E44AD'; // Purple for sites with known kinases
-            }
-            
             // Check is_known_phosphosite (from database)
-            if (d.is_known_phosphosite === true || d.is_known_phosphosite === 1 || d.is_known_phosphosite === "1" || d.is_known_phosphosite === 1.0) {
+            if (d.is_known_phosphosite === true || 
+                d.is_known_phosphosite === 1 || 
+                d.is_known_phosphosite === "1" || 
+                d.is_known_phosphosite === 1.0) {
                 return '#4CAF50'; // Green for known protein sites
             }
             
             // Check is_known (fallback property)
-            if (d.is_known === true || d.is_known === "true" || d.is_known === "True" || d.is_known === 1) {
+            if (d.is_known === true || 
+                d.is_known === "true" || 
+                d.is_known === "True" || 
+                d.is_known === 1) {
                 return '#4CAF50'; // Green for known protein sites
             }
             
             // Default to unknown (orange)
             return '#FF9800'; // Orange for unknown protein sites
         }
-        // For match nodes, check if they have a known kinase
-        if (d.known_kinase) {
-            return '#9C27B0'; // Darker purple for sequence-similar sites with known kinases
-        }
+        
+        // For match nodes without a known kinase
         return '#E91E63'; // Pink for sequence-similar sites without known kinases
     }
     
@@ -258,6 +265,9 @@ function sequenceNetworkVisualization(proteinUniprotId) {
     // Add a legend for the node colors
     addNetworkLegend(svg, width);
     
+    // Update the legend in the container's HTML to match updated color scheme
+    updateNetworkLegendHTML();
+    
     // Drag functions
     function dragstarted(event, d) {
         if (!event.active) sequenceNetworkSimulation.alphaTarget(0.3).restart();
@@ -288,9 +298,8 @@ function addNetworkLegend(svg, width) {
     const legendData = [
         { color: "#4CAF50", label: "Known protein sites" },
         { color: "#FF9800", label: "Unknown protein sites" },
-        { color: "#8E44AD", label: "Known sites with kinase" },
-        { color: "#E91E63", label: "Similar sites" },
-        { color: "#9C27B0", label: "Similar sites with kinase" }
+        { color: "#9C27B0", label: "Sites with known kinase" },
+        { color: "#E91E63", label: "Sequence-similar sites" }
     ];
     
     const legendItems = legend.selectAll(".legend-item")
@@ -312,7 +321,7 @@ function addNetworkLegend(svg, width) {
         .attr("ry", 5);
     
     // Add colored circles
-    legendItems.append("circle")
+    legendItems.append("square")
         .attr("r", 6)
         .attr("fill", d => d.color);
     
@@ -553,9 +562,13 @@ function extractSequenceNetworkData(proteinUniprotId) {
                                     motif = motif || cachedData.motif;
                                 }
                                 
-                                // Extract known kinase information
-                                const knownKinase = match.known_kinase || 
-                                                   (match.kinases && match.kinases.length > 0 ? match.kinases[0] : null);
+                                // Extract known kinase information - enhanced to check more sources
+                                const knownKinase = extractKinaseInfo(match);
+                                
+                                // Check if this is a match within the same protein
+                                const isSameProtein = targetUniprot === proteinUniprotId;
+                                // For matches within the same protein, we still want to keep the match type
+                                // This ensures we don't incorrectly classify nodes
                                 
                                 // Add target node if not already present
                                 if (!nodeMap.has(targetId)) {
@@ -571,7 +584,8 @@ function extractSequenceNetworkData(proteinUniprotId) {
                                         id: targetId,
                                         name: targetSite || 'Unknown',
                                         uniprot: targetUniprot || 'Unknown',
-                                        type: 'match', // Sequence match
+                                        // Keep 'match' type even if it's the same protein
+                                        type: 'match',
                                         is_known: match.is_known === true || match.is_known === 1,
                                         is_known_phosphosite: match.is_known_phosphosite || 0,
                                         siteType: targetSiteType,
@@ -642,21 +656,43 @@ function cleanJson(jsonString) {
         .replace(/\binfinity\b/g, 'null');
 }
 
-// Function to extract kinase information from site data
-function extractKinaseInfo(site) {
-    // Check different possible locations of kinase information
-    if (site.known_kinase) return site.known_kinase;
-    if (site.KINASE_1) return site.KINASE_1;
+// Enhanced function to extract kinase information from site data
+// Looks for kinase data in multiple possible locations
+function extractKinaseInfo(data) {
+    // Check all possible locations for kinase information
+    
+    // Direct known_kinase field
+    if (data.known_kinase && typeof data.known_kinase === 'string' && data.known_kinase !== 'unlabeled') {
+        return data.known_kinase;
+    }
+    
+    // PhosphositePlus format KINASE_1 through KINASE_5
+    for (let i = 1; i <= 5; i++) {
+        const kinaseField = `KINASE_${i}`;
+        if (data[kinaseField] && typeof data[kinaseField] === 'string' && data[kinaseField] !== 'unlabeled') {
+            return data[kinaseField];
+        }
+    }
+    
+    // Target known kinase field
+    if (data.target_known_kinase && typeof data.target_known_kinase === 'string' && data.target_known_kinase !== 'unlabeled') {
+        return data.target_known_kinase;
+    }
     
     // Check for kinases array
-    if (site.kinases && Array.isArray(site.kinases) && site.kinases.length > 0) {
-        return site.kinases[0];
+    if (data.kinases && Array.isArray(data.kinases) && data.kinases.length > 0) {
+        // Find first non-null, non-undefined, non-empty kinase
+        for (const kinase of data.kinases) {
+            if (kinase && typeof kinase === 'string' && kinase !== 'unlabeled') {
+                return kinase;
+            }
+        }
     }
     
     // Check if top_kinases is available with scores
-    if (site.top_kinases && Array.isArray(site.top_kinases) && site.top_kinases.length > 0) {
+    if (data.top_kinases && Array.isArray(data.top_kinases) && data.top_kinases.length > 0) {
         // Return highest scoring kinase
-        const topKinase = site.top_kinases[0];
+        const topKinase = data.top_kinases[0];
         return topKinase.kinase || topKinase.name;
     }
     
@@ -890,7 +926,7 @@ function updateNetworkLegendHTML() {
                 <span class="small">Unknown protein sites</span>
             </div>
             <div class="d-flex align-items-center me-4 mb-2">
-                <div style="width: 16px; height: 16px; background-color: #8E44AD; border-radius: 50%; margin-right: 6px;"></div>
+                <div style="width: 16px; height: 16px; background-color: #9C27B0; border-radius: 50%; margin-right: 6px;"></div>
                 <span class="small">Sites with known kinase</span>
             </div>
             <div class="d-flex align-items-center me-4 mb-2">
@@ -900,3 +936,4 @@ function updateNetworkLegendHTML() {
         `;
     }
 }
+
