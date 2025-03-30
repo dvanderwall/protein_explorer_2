@@ -616,8 +616,6 @@ def api_network(uniprot_id):
 @app.route('/phosphosite', methods=['GET', 'POST'])
 def phosphosite_analysis():
     """Phosphosite structural analysis page with improved error handling and supplementary data."""
-    import os
-    from flask import request, render_template
     
     # Import enhanced table function
     from protein_explorer.analysis.enhanced_table import enhance_phosphosite_table
@@ -678,10 +676,10 @@ def phosphosite_analysis():
                 # Analyze phosphosites
                 phosphosites = pe.analysis.phospho.analyze_phosphosites(sequence, structure, uniprot_id)
                 
-                # Get site IDs for batch query
+                # Get site IDs for batch lookup
                 site_ids = [f"{uniprot_id}_{site['resno']}" for site in phosphosites]
                 
-                # Batch query for supplementary data
+                # Batch retrieve supplementary data
                 supp_data_dict = get_phosphosites_batch(site_ids)
                 
                 # Enhance phosphosites with database data

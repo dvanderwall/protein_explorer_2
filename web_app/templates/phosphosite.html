@@ -389,6 +389,9 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.0.1/dist/chartjs-plugin-annotation.min.js"></script>
     
+    <!-- Load the new sequence network visualization script -->
+    <script src="{{ url_for('static', filename='js/protein-sequence-network-visualization.js') }}"></script>
+    
     <!-- Bootstrap Tab Initialization -->
     <script>
       document.addEventListener('DOMContentLoaded', function() {
@@ -470,9 +473,6 @@
         // Check network containers
         console.log('Structural network container exists:', !!document.getElementById('network-container'));
         console.log('Sequence network container exists:', !!document.getElementById('sequence-network-container'));
-        
-        // Check if setupSequenceNetwork function exists
-        console.log('setupSequenceNetwork function exists:', typeof setupSequenceNetwork !== 'undefined');
       });
     </script>
     
