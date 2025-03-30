@@ -1,11 +1,13 @@
-# In protein_explorer/visualization/protein_sequence_phosphosite_network.py
+from protein_explorer.db.db import get_phosphosites_batch
 import json
+import logging
 
+logger = logging.getLogger(__name__)
 
 def create_sequence_network_visualization(protein_uniprot_id, phosphosites=None, sequence_matches=None):
     """
     Create a network visualization of phosphosites and their sequence similarity matches.
-    Similar to the structural network, but based on sequence similarity.
+    With enhanced data handling to ensure proper visualization of known sites.
     
     Args:
         protein_uniprot_id: UniProt ID of the protein
@@ -36,6 +38,65 @@ def create_sequence_network_visualization(protein_uniprot_id, phosphosites=None,
             </div>
         </div>
         """
+    
+    # Process the phosphosites and matches to ensure consistent data types
+    # This ensures the JS can accurately determine if a site is known
+    processed_matches = {}
+    
+    if sequence_matches:
+        # Get all site IDs for the protein nodes
+        site_ids = []
+        for site in phosphosites:
+            if 'resno' in site:
+                site_ids.append(f"{protein_uniprot_id}_{site['resno']}")
+        
+        # Get all target IDs from matches
+        target_ids = []
+        for site_matches in sequence_matches.values():
+            for match in site_matches:
+                if 'target_id' in match:
+                    target_ids.append(match['target_id'])
+        
+        # Get phosphosite data for both protein sites and match targets
+        all_site_ids = site_ids + target_ids
+        logger.info(f"Getting phosphosite data for {len(all_site_ids)} sites")
+        supp_data_dict = get_phosphosites_batch(all_site_ids)
+        
+        # Process the matches with enhanced data
+        for site_name, matches in sequence_matches.items():
+            processed_site_matches = []
+            
+            for match in matches:
+                # Create an enhanced copy of the match
+                processed_match = match.copy()
+                
+                # Add is_known_phosphosite explicitly to match target
+                target_id = match.get('target_id')
+                if target_id and target_id in supp_data_dict:
+                    target_data = supp_data_dict[target_id]
+                    
+                    # Add supplementary data
+                    if 'is_known_phosphosite' in target_data:
+                        # Convert to float for consistent handling in JS
+                        processed_match['is_known_phosphosite'] = float(target_data['is_known_phosphosite'])
+                    
+                    # Add motif if available
+                    if 'SITE_+/-7_AA' in target_data and target_data['SITE_+/-7_AA'] and 'motif' not in processed_match:
+                        processed_match['motif'] = target_data['SITE_+/-7_AA']
+                    
+                    # Add other useful fields
+                    for field in ['site_plddt', 'mean_plddt', 'nearby_count', 'surface_accessibility']:
+                        if field in target_data and target_data[field] is not None:
+                            processed_match[field] = target_data[field]
+                
+                # Add the processed match
+                processed_site_matches.append(processed_match)
+            
+            # Add to the processed matches dictionary
+            processed_matches[site_name] = processed_site_matches
+    else:
+        # If no matches, use empty dictionary
+        processed_matches = {}
     
     # Create network visualization HTML
     html = """
@@ -94,11 +155,43 @@ def create_sequence_network_visualization(protein_uniprot_id, phosphosites=None,
     </div>
 
     <!-- Store match data for the visualization -->
-    <div id="sequence-match-data" style="display: none;" data-matches='""" + json.dumps(sequence_matches) + """'></div>
+    <div id="sequence-match-data" style="display: none;" data-matches='"""
+    
+    # Convert processed matches to JSON with proper handling of is_known field
+    matches_json = json.dumps(processed_matches)
+    html += matches_json + """'></div>
+
+    <!-- Store phosphosites data for better node creation -->
+    <div id="phosphosites-data" style="display: none;" data-sites='"""
+    
+    # Convert phosphosites to JSON with explicit type conversion of is_known fields
+    if phosphosites:
+        processed_sites = []
+        for site in phosphosites:
+            site_copy = site.copy()
+            
+            # Ensure is_known and is_known_phosphosite are properly set
+            if 'is_known' in site:
+                site_copy['is_known'] = bool(site['is_known'])
+            
+            if 'is_known_phosphosite' in site:
+                # Convert to float for consistent handling
+                site_copy['is_known_phosphosite'] = float(site['is_known_phosphosite'])
+            elif 'is_known' in site:
+                # Derive from is_known if is_known_phosphosite not present
+                site_copy['is_known_phosphosite'] = 1.0 if site['is_known'] else 0.0
+                
+            processed_sites.append(site_copy)
+        sites_json = json.dumps(processed_sites)
+    else:
+        sites_json = '[]'
+    
+    html += sites_json + """'></div>
 
     <!-- Inline script to ensure the network visualization works -->
     <script>
     document.addEventListener('DOMContentLoaded', function() {
+        console.log('DOM loaded, initializing sequence network for """ + protein_uniprot_id + """');
         // Make sure the visualization function is available
         if (typeof sequenceNetworkVisualization === 'function') {
             // Call the main visualization function
@@ -107,7 +200,7 @@ def create_sequence_network_visualization(protein_uniprot_id, phosphosites=None,
             console.error('Sequence network visualization function not found!');
             // Try to load it dynamically
             var script = document.createElement('script');
-            script.src = "/static/js/sequence-network-visualization.js";
+            script.src = "/static/js/protein-sequence-network-visualization.js";
             script.onload = function() {
                 if (typeof sequenceNetworkVisualization === 'function') {
                     sequenceNetworkVisualization('""" + protein_uniprot_id + """');
