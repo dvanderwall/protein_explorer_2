@@ -47,6 +47,7 @@ from protein_explorer.analysis.phospho_analyzer_2 import (
     get_phosphosite_data,
     enhance_phosphosite, 
     enhance_structural_matches,
+    enhance_structural_matches_group,
     analyze_phosphosite_context,
     enhance_site_visualization, 
     create_comparative_motif_visualization,
@@ -58,6 +59,7 @@ from protein_explorer.visualization.network import create_phosphosite_network
 
 from protein_explorer.analysis.sequence_analyzer_2 import (
     find_sequence_matches,
+    find_sequence_matches_with_connections,
     analyze_motif_conservation,
     create_sequence_network_data,
     get_motif_enrichment,
@@ -81,6 +83,7 @@ from protein_explorer.analysis.network_kinase_predictor_2 import (
     get_kinase_family_distribution_network
 )
 from protein_explorer.visualization.protein_phosphosite_network import create_phosphosite_network_visualization
+from protein_explorer.visualization.protein_sequence_phosphosite_network import create_sequence_network_visualization
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -609,6 +612,7 @@ def api_network(uniprot_id):
         return jsonify({'error': str(e)}), 400
 
     
+
 @app.route('/phosphosite', methods=['GET', 'POST'])
 def phosphosite_analysis():
     """Phosphosite structural analysis page with improved error handling and supplementary data."""
@@ -655,6 +659,7 @@ def phosphosite_analysis():
                 'protein_info': protein_info,
                 'phosphosites': [],
                 'structural_matches': None,
+                'sequence_matches': None,
                 'error': None
             }
             
@@ -711,11 +716,8 @@ def phosphosite_analysis():
                 # Try to find structural matches
                 try:
                     # Batch query for structural matches
-                    print("SITE IDS 2")
-                    print(site_ids)
                     all_matches = find_structural_matches_batch(site_ids, rmsd_threshold=5.0)
-                    print("ALL MATCHES 2")
-                    print(all_matches)
+                    
                     # Organize by site
                     structural_matches = {}
                     for site in phosphosites:
@@ -732,6 +734,41 @@ def phosphosite_analysis():
                 except Exception as e:
                     logger.error(f"Error analyzing structural matches: {e}")
                     results['error'] = f"Error analyzing structural matches: {str(e)}"
+                
+                # Try to find sequence similarity matches
+                try:
+                    # Direct use of batch query without additional complexity
+                    sequence_matches_batch = find_sequence_matches_batch(site_ids, min_similarity=0.4)
+                    
+                    # Organize matches by site for display
+                    sequence_matches = {}
+                    for site_id, matches in sequence_matches_batch.items():
+                        # Get the site name from the site_id
+                        site_parts = site_id.split('_')
+                        if len(site_parts) >= 2:
+                            site_num = site_parts[1]
+                            
+                            # Extract site type if possible (S, T, Y)
+                            site_match = re.match(r'([STY])(\d+)', site_num)
+                            if site_match:
+                                site_type = site_match.group(1)
+                                site_num = site_match.group(2)
+                                site_name = f"{site_type}{site_num}"
+                            else:
+                                site_name = site_num
+                                
+                            # Add matches to the dictionary if there are any
+                            if matches:
+                                sequence_matches[site_name] = matches
+                    
+                    results['sequence_matches'] = sequence_matches
+                except Exception as e:
+                    logger.error(f"Error analyzing sequence similarity matches: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    # Continue without sequence matches
+                    results['error'] = f"{results.get('error', '')} Error analyzing sequence matches: {str(e)}"
+                
             except Exception as e:
                 logger.error(f"Error analyzing phosphosites: {e}")
                 results['error'] = f"Error analyzing phosphosites: {str(e)}"
@@ -747,20 +784,30 @@ def phosphosite_analysis():
                 # Add the HTML to the results
                 results['phosphosites_html'] = phosphosites_html
             
-            # Generate network visualization
+            # Generate structural network visualization
             network_visualization = create_phosphosite_network_visualization(
                 results['protein_info']['uniprot_id'],
                 results['phosphosites'],
                 results['structural_matches']
             )
             
-            # Return results including enhanced data and network visualization
+            # Generate sequence similarity network visualization
+            from protein_explorer.visualization.protein_sequence_phosphosite_network import create_sequence_network_visualization
+            sequence_network_visualization = create_sequence_network_visualization(
+                results['protein_info']['uniprot_id'],
+                results['phosphosites'],
+                results['sequence_matches']
+            )
+            
+            # Return results including enhanced data and network visualizations
             return render_template('phosphosite.html', 
                                   protein_info=results['protein_info'],
                                   phosphosites=results['phosphosites'],
                                   phosphosites_html=results.get('phosphosites_html'),
                                   structural_matches=results['structural_matches'],
+                                  sequence_matches=results.get('sequence_matches'),
                                   network_visualization=network_visualization,
+                                  sequence_network_visualization=sequence_network_visualization,
                                   error=results.get('error'))
                 
         except Exception as e:

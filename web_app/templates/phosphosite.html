@@ -37,6 +37,22 @@
         .high-rmsd {
             background-color: #f8d7da;
         }
+        /* Additional styles for sequence match tables */
+        .sequence-match-card {
+            margin-bottom: 1.5rem;
+        }
+        .sequence-match-table td, .sequence-match-table th {
+            padding: 0.5rem;
+        }
+        .high-similarity {
+            background-color: #d4edda;
+        }
+        .medium-similarity {
+            background-color: #fff3cd;
+        }
+        .low-similarity {
+            background-color: #f8d7da;
+        }
         /* Additional styles for tabs and visualization container */
         .tab-content > .tab-pane {
             display: none;
@@ -60,6 +76,20 @@
             color: #aaa;
             font-style: italic;
             display: none; /* This will be hidden once content is loaded */
+        }
+        /* Ensure network containers are visible */
+        #network-container, #sequence-network-container {
+            height: 500px;
+            width: 100%;
+            position: relative;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            background-color: white;
+        }
+        /* Add spacing between network visualizations */
+        .network-visualization-wrapper {
+            margin-bottom: 40px;
         }
     </style>
 </head>
@@ -146,9 +176,6 @@
             </div>
         </div>
 
-        <!-- Visualization Container -->
-        <div id="phosphosite-visualization-container"></div>
-
         <!-- Results Section -->
         {% if protein_info %}
         <div class="card mb-4">
@@ -172,11 +199,19 @@
             </div>
         </div>
 
-        <!-- With this instead: -->
         {% if phosphosites %}
-        <!-- Network Visualization -->
+            <!-- Network Visualizations -->
             {% if network_visualization %}
+            <div class="network-visualization-wrapper">
                 {{ network_visualization|safe }}
+            </div>
+            {% endif %}
+
+            <!-- Sequence Similarity Network Visualization -->
+            {% if sequence_network_visualization %}
+            <div class="network-visualization-wrapper">
+                {{ sequence_network_visualization|safe }}
+            </div>
             {% endif %}
 
             <!-- Phosphosite Table -->
@@ -281,6 +316,62 @@
         </div>
         {% endif %}
         
+        <!-- Sequence Similarity Matches -->
+        {% if sequence_matches %}
+        <h2 class="mb-3">Sequence Similarity Matches</h2>
+        <p class="text-muted mb-4">
+            Showing phosphosites with sequence similarity to other kinase-binding sites.
+            Higher similarity values indicate greater sequence similarity.
+        </p>
+
+        <div class="row">
+            {% for site, matches in sequence_matches.items() %}
+            <div class="col-md-6">
+                <div class="card sequence-match-card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Site: {{ site }} Matches</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover sequence-match-table mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Target Protein</th>
+                                        <th>Target Site</th>
+                                        <th>Similarity</th>
+                                        <th>Motif</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for match in matches %}
+                                    <tr class="{% if match.similarity > 0.8 %}high-similarity{% elif match.similarity > 0.6 %}medium-similarity{% else %}low-similarity{% endif %}">
+                                        <td>
+                                            <a href="/protein/{{ match.target_uniprot }}" target="_blank">
+                                                {{ match.target_uniprot }}
+                                            </a>
+                                        </td>
+                                        <td>{{ match.target_site }}</td>
+                                        <td>{{ (match.similarity * 100)|round(1) }}%</td>
+                                        <td><code class="motif-sequence">{{ match.motif }}</code></td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Helper for sequence network visualization -->
+        {% if sequence_matches %}
+        <div id="sequence-match-data" style="display: none;" 
+            data-matches="{{ sequence_matches|tojson }}">
+        </div>
+        {% endif %}
+        
         {% endif %}
     </div>
 
@@ -292,7 +383,11 @@
     </footer>
 
     <!-- JavaScript Libraries -->
+    <!-- Load D3.js first to ensure it's available for network visualizations -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.0.1/dist/chartjs-plugin-annotation.min.js"></script>
     
     <!-- Bootstrap Tab Initialization -->
     <script>
@@ -365,32 +460,23 @@
 
     <!-- Debugging Script -->
     <script>
-      console.log('Page loaded, checking for visualization container...');
+      console.log('Page loaded, checking for visualization containers...');
       document.addEventListener('DOMContentLoaded', function() {
         console.log('DOM fully loaded');
-        console.log('Phosphosite container exists:', !!document.getElementById('phosphosite-visualization-container'));
+        console.log('D3.js version:', typeof d3 !== 'undefined' ? 'Loaded' : 'Not loaded');
         console.log('Bootstrap version:', typeof bootstrap !== 'undefined' ? 'Loaded' : 'Not loaded');
         console.log('Chart.js version:', typeof Chart !== 'undefined' ? 'Loaded' : 'Not loaded');
+        
+        // Check network containers
+        console.log('Structural network container exists:', !!document.getElementById('network-container'));
+        console.log('Sequence network container exists:', !!document.getElementById('sequence-network-container'));
+        
+        // Check if setupSequenceNetwork function exists
+        console.log('setupSequenceNetwork function exists:', typeof setupSequenceNetwork !== 'undefined');
       });
-    </script>
-    
-    <!-- Chart.js and Visualization Scripts -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.0.1/dist/chartjs-plugin-annotation.min.js"></script>
-    
-    <!-- Chart.js Verification -->
-    <script>
-      // Check if Chart.js loaded properly
-      if (typeof Chart === 'undefined') {
-        console.error('Chart.js failed to load! Trying to load it again...');
-      } else {
-        console.log('Chart.js successfully loaded');
-      }
     </script>
     
     <!-- Main Visualization Script -->
     <script src="{{ url_for('static', filename='js/phosphosite-visualization.js') }}"></script>
-    
-    
 </body>
 </html>

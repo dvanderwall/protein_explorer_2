@@ -19,3 +19,7 @@ from protein_explorer.visualization.network import (
 from protein_explorer.visualization.protein_phosphosite_network import (
     create_phosphosite_network_visualization
 )
+
+from protein_explorer.visualization.protein_sequence_phosphosite_network import (
+    create_sequence_network_visualization
+)

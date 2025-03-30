@@ -343,7 +343,9 @@ def create_phosphosite_network_visualization(protein_uniprot_id, phosphosites=No
             
             // Process rows to get phosphosites
             const rows = phosphositeTable.querySelectorAll('tbody tr');
-            rows.forEach(row => {
+            console.log(`Found ${rows.length} phosphosite rows in the table`);
+            
+            rows.forEach((row, index) => {
                 // Get site info
                 const siteCell = row.querySelector('td:first-child');
                 if (!siteCell) return;
@@ -354,10 +356,16 @@ def create_phosphosite_network_visualization(protein_uniprot_id, phosphosites=No
                 if (!siteName) return;
                 
                 // Get site attributes
-                const isKnown = row.getAttribute('data-known') === 'true';
+                const knownAttr = row.getAttribute('data-known');
+                console.log(`Row ${index}, Site: ${siteName}, data-known attribute: "${knownAttr}"`);
+                
+                // Case-insensitive check for true/false strings, and also handle "1" or "yes" values
+                const isKnown = knownAttr === 'true' || knownAttr === 'True' || knownAttr === 'TRUE' || 
+                            knownAttr === '1' || knownAttr === 'yes' || knownAttr === 'Yes';
+                
                 const siteType = row.getAttribute('data-type') || siteName[0];
                 const resno = row.getAttribute('data-resno') || 
-                            siteName.match(/\\d+/)[0];
+                            (siteName.match(/\d+/) ? siteName.match(/\d+/)[0] : '0');
                 
                 // Get other metrics if available
                 const meanPlddt = row.getAttribute('data-plddt') || 
@@ -366,6 +374,16 @@ def create_phosphosite_network_visualization(protein_uniprot_id, phosphosites=No
                 const nearbyCount = row.getAttribute('data-nearby') || 
                                 row.querySelector('td:nth-child(5)') ? 
                                 row.querySelector('td:nth-child(5)').textContent.trim() : '';
+                
+                // Check if the row has a "Yes" in the Known column
+                const knownCell = row.querySelector('td:nth-child(7)'); // 7th column is "Known"
+                const knownText = knownCell ? knownCell.textContent.trim() : '';
+                const isKnownByText = knownText === 'Yes';
+                
+                // Use either attribute or text determination for isKnown
+                const finalIsKnown = isKnown || isKnownByText;
+                
+                console.log(`Site ${siteName} isKnown: ${finalIsKnown} (attribute: ${isKnown}, text: ${isKnownByText})`);
                 
                 // Get motif
                 const motifCell = row.querySelector('td:nth-child(2)');
@@ -381,7 +399,7 @@ def create_phosphosite_network_visualization(protein_uniprot_id, phosphosites=No
                         name: siteName,
                         uniprot: proteinUniprotId,
                         type: 'protein',
-                        isKnown: isKnown,
+                        isKnown: finalIsKnown,
                         siteType: siteType,
                         resno: resno,
                         meanPlddt: meanPlddt,
@@ -394,6 +412,8 @@ def create_phosphosite_network_visualization(protein_uniprot_id, phosphosites=No
                     nodeMap.set(nodeId, node);
                 }
             });
+            
+            console.log(`Created ${nodes.length} protein nodes, known sites: ${nodes.filter(n => n.isKnown).length}`);
             
             // Find match tables
             document.querySelectorAll('.match-card').forEach(matchCard => {
@@ -469,6 +489,7 @@ def create_phosphosite_network_visualization(protein_uniprot_id, phosphosites=No
             
             // Return network data if we have nodes
             if (nodes.length > 0) {
+                console.log(`Final network: ${nodes.length} nodes, ${links.length} links`);
                 return { nodes, links };
             }
             

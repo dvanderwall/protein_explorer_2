@@ -85,7 +85,7 @@ def enhance_phosphosite(phosphosite: Dict, uniprot_id: str) -> Dict:
     
     return enhanced_site
 
-def enhance_structural_matches(matches: List[Dict], site: str) -> List[Dict]:
+def enhance_structural_matches(matches, site):
     """
     Enhance structural matches with supplementary data.
     Ensures motif sequences in matches are uppercase.
@@ -98,7 +98,7 @@ def enhance_structural_matches(matches: List[Dict], site: str) -> List[Dict]:
         Enhanced list of matches
     """
     if not matches:
-        return matches
+        return []
     
     logger.info(f"Enhancing {len(matches)} structural matches for {site}")
     
@@ -112,18 +112,19 @@ def enhance_structural_matches(matches: List[Dict], site: str) -> List[Dict]:
         target_uniprot = match.get('target_uniprot')
         target_site = match.get('target_site')
         
+        # Create enhanced match (copy the original)
+        enhanced_match = match.copy()
+        
         # Parse site number from target_site
-        site_match = re.match(r'(\d+)', target_site)
+        site_match = re.match(r'([A-Z]?)(\d+)', target_site)
         if site_match:
-            resno = int(site_match.group(1))
+            site_type = site_match.group(1) or 'S'  # Default to S if missing
+            resno = int(site_match.group(2))
             target_id = f"{target_uniprot}_{resno}"
             
             # Get supplementary data
-            target_supp = get_phosphosite_data(target_id)
+            target_supp = get_phosphosites_batch(target_id)
             if target_supp:
-                # Create enhanced match
-                enhanced_match = match.copy()
-                
                 # Add supplementary data
                 if 'motif_plddt' in target_supp and target_supp['motif_plddt'] is not None:
                     enhanced_match['plddt'] = f"{target_supp['motif_plddt']:.1f}"
@@ -131,29 +132,112 @@ def enhance_structural_matches(matches: List[Dict], site: str) -> List[Dict]:
                 if 'nearby_count' in target_supp and target_supp['nearby_count'] is not None:
                     enhanced_match['nearby_count'] = target_supp['nearby_count']
                 
-                if 'SITE_+/-7_AA' in target_supp and target_supp['SITE_+/-7_AA'] is not None:
-                    # Ensure the motif is uppercase
-                    enhanced_match['motif'] = target_supp['SITE_+/-7_AA'].upper()
-                elif 'motif' in target_supp and target_supp['motif'] is not None:
-                    # Alternative motif field, also ensure uppercase
+                # Try both motif field names
+                if 'motif' in target_supp and target_supp['motif'] is not None:
                     enhanced_match['motif'] = target_supp['motif'].upper()
+                elif 'SITE_+/-7_AA' in target_supp and target_supp['SITE_+/-7_AA'] is not None:
+                    enhanced_match['motif'] = target_supp['SITE_+/-7_AA'].upper()
+                
                 
                 # Add additional fields
                 for key in ['site_plddt', 'surface_accessibility', 'secondary_structure']:
                     if key in target_supp and target_supp[key] is not None:
                         enhanced_match[key] = target_supp[key]
-                
-                enhanced_matches.append(enhanced_match)
-                continue
         
-        # If no supplementary data, just add the original match
         # Make sure any existing motif is uppercase
-        if 'motif' in match and match['motif']:
-            match['motif'] = match['motif'].upper()
-        enhanced_matches.append(match)
+        if 'motif' in enhanced_match and enhanced_match['motif']:
+            enhanced_match['motif'] = enhanced_match['motif'].upper()
+            
+        enhanced_matches.append(enhanced_match)
     
     return enhanced_matches
 
+def enhance_structural_matches_group(matches, site):
+    """
+    Enhance structural matches with supplementary data using batch processing.
+    Ensures motif sequences in matches are uppercase.
+    
+    Args:
+        matches: List of structural match dictionaries
+        site: Query site string for logging
+        
+    Returns:
+        Enhanced list of matches
+    """
+    if not matches:
+        return []
+    
+    logger.info(f"Enhancing {len(matches)} structural matches for {site}")
+    
+    # Filter out self-matches (RMSD ≈ 0)
+    filtered_matches = [match for match in matches if match.get('rmsd', 0) >= 0.01]
+    
+    # Prepare target_ids for batch processing
+    target_ids = []
+    match_indices = {}  # To map target_ids back to their matches
+    
+    for i, match in enumerate(filtered_matches):
+        target_uniprot = match.get('target_uniprot')
+        target_site = match.get('target_site')
+        
+        # Parse site number from target_site
+        site_match = re.match(r'([A-Z]?)(\d+)', target_site)
+        if site_match:
+            site_type = site_match.group(1) or 'S'  # Default to S if missing
+            resno = int(site_match.group(2))
+            target_id = f"{target_uniprot}_{resno}"
+            
+            target_ids.append(target_id)
+            match_indices[target_id] = i
+    
+    # Get supplementary data for all targets in one batch call
+    all_supp_data = get_phosphosites_batch(target_ids)
+    
+    # Create enhanced matches
+    enhanced_matches = []
+    
+    for i, match in enumerate(filtered_matches):
+        # Create enhanced match (copy the original)
+        enhanced_match = match.copy()
+        
+        target_uniprot = match.get('target_uniprot')
+        target_site = match.get('target_site')
+        
+        # Parse site number from target_site
+        site_match = re.match(r'([A-Z]?)(\d+)', target_site)
+        if site_match:
+            site_type = site_match.group(1) or 'S'  # Default to S if missing
+            resno = int(site_match.group(2))
+            target_id = f"{target_uniprot}_{resno}"
+            
+            # Get supplementary data from the batch results
+            target_supp = all_supp_data.get(target_id)
+            if target_supp:
+                # Add supplementary data
+                if 'motif_plddt' in target_supp and target_supp['motif_plddt'] is not None:
+                    enhanced_match['plddt'] = f"{target_supp['motif_plddt']:.1f}"
+                
+                if 'nearby_count' in target_supp and target_supp['nearby_count'] is not None:
+                    enhanced_match['nearby_count'] = target_supp['nearby_count']
+                
+                # Try both motif field names
+                if 'motif' in target_supp and target_supp['motif'] is not None:
+                    enhanced_match['motif'] = target_supp['motif'].upper()
+                elif 'SITE_+/-7_AA' in target_supp and target_supp['SITE_+/-7_AA'] is not None:
+                    enhanced_match['motif'] = target_supp['SITE_+/-7_AA'].upper()
+                
+                # Add additional fields
+                for key in ['site_plddt', 'surface_accessibility', 'secondary_structure']:
+                    if key in target_supp and target_supp[key] is not None:
+                        enhanced_match[key] = target_supp[key]
+        
+        # Make sure any existing motif is uppercase
+        if 'motif' in enhanced_match and enhanced_match['motif']:
+            enhanced_match['motif'] = enhanced_match['motif'].upper()
+            
+        enhanced_matches.append(enhanced_match)
+    
+    return enhanced_matches
 
 def get_phosphosites(uniprot_id: str) -> List[Dict]:
     """

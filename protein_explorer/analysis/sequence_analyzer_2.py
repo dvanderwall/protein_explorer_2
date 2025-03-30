@@ -886,3 +886,210 @@ def find_sequence_matches_batch(site_ids: List[str],
     except Exception as e:
         logger.error(f"Error in batch sequence match finding: {e}")
         return {}
+    
+
+
+# This function should be added to protein_explorer/analysis/sequence_analyzer_2.py
+
+def find_sequence_matches_with_connections(site_ids: List[str], min_similarity: float = 0.4) -> Dict:
+    """
+    Find sequence similarity matches for multiple sites in a batch,
+    including connections between the similar sites.
+    
+    Args:
+        site_ids: List of site IDs in format 'UniProtID_ResidueNumber'
+        min_similarity: Minimum similarity score to include (0-1)
+        
+    Returns:
+        Dictionary with nodes, edges and required data for network visualization
+    """
+    if not site_ids:
+        return {'nodes': [], 'links': [], 'site_matches': {}}
+    
+    # Get batch match results for the sites
+    from protein_explorer.db import find_sequence_matches_batch
+    site_matches_dict = find_sequence_matches_batch(site_ids, min_similarity)
+    
+    # Set to track all unique match IDs for the next query
+    all_match_ids = set()
+    
+    # Collect all matches for each site
+    for site_id, matches in site_matches_dict.items():
+        for match in matches:
+            all_match_ids.add(match['target_id'])
+    
+    # Find interconnections between the matches themselves
+    # This requires an additional batch query
+    match_interconnections = {}
+    if all_match_ids:
+        # Convert to list for the query
+        match_id_list = list(all_match_ids)
+        
+        # Find matches among the matches themselves
+        match_matches = find_sequence_matches_batch(match_id_list, min_similarity)
+        
+        # Store valid interconnections
+        for match_id, connections in match_matches.items():
+            valid_connections = []
+            for connection in connections:
+                # Only include connections to other matches we already know about
+                # Filter by our threshold and avoid self-connections
+                if (connection['target_id'] in all_match_ids and 
+                    connection['target_id'] != match_id and
+                    connection['similarity'] >= min_similarity):
+                    valid_connections.append(connection)
+            
+            if valid_connections:
+                match_interconnections[match_id] = valid_connections
+    
+    # Build network with nodes and links
+    nodes = []
+    links = []
+    node_map = {}  # Track nodes we've added
+    link_map = {}  # Track links we've added to avoid duplicates
+    
+    # OPTIMIZATION: Get all supplementary data in one batch query
+    # Collect all site IDs that need supplementary data (original sites + matches)
+    all_site_ids = site_ids.copy()
+    
+    # Build network with nodes and links
+    # First add nodes for the query sites
+    query_site_info = {}
+    for site_id in site_ids:
+        # Split site_id to get uniprot_id and site number
+        parts = site_id.split('_')
+        if len(parts) < 2:
+            continue
+            
+        uniprot_id = parts[0]
+        
+        # Try to extract site name from the second part
+        site_num = parts[1]
+        
+        # Extract site type if possible (S, T, Y)
+        site_match = re.match(r'([STY])(\d+)', site_num)
+        if site_match:
+            site_type = site_match.group(1)
+            site_num = site_match.group(2)
+            site_name = f"{site_type}{site_num}"
+        else:
+            site_name = site_num
+            site_type = None
+        
+        # Store basic info for later
+        query_site_info[site_id] = {
+            'site_name': site_name,
+            'uniprot_id': uniprot_id,
+            'site_type': site_type
+        }
+    
+    # Get all supplementary data in one batch query
+    supp_data_batch = get_phosphosites_batch(all_site_ids)
+    
+    # Create nodes for query sites
+    for site_id, site_info in query_site_info.items():
+        # Get supplementary data if available
+        site_data = supp_data_batch.get(site_id, {})
+        
+        motif = None
+        is_known = False
+        
+        if site_data:
+            # Extract motif
+            if 'SITE_+/-7_AA' in site_data and site_data['SITE_+/-7_AA']:
+                motif = site_data['SITE_+/-7_AA']
+            elif 'motif' in site_data and site_data['motif']:
+                motif = site_data['motif']
+                
+            # Check if known
+            if 'is_known_phosphosite' in site_data:
+                is_known = site_data['is_known_phosphosite']
+        
+        # Create node
+        node = {
+            'id': site_id,
+            'name': site_info['site_name'],
+            'uniprot': site_info['uniprot_id'],
+            'type': 'protein',  # Protein site
+            'siteType': site_info['site_type'] or 'S',  # Default to S if not specified
+            'isKnown': is_known,
+            'motif': motif,
+            'size': 10  # Slightly larger for protein sites
+        }
+        
+        nodes.append(node)
+        node_map[site_id] = node
+    
+    # Then add nodes and links for the matches
+    for site_id, matches in site_matches_dict.items():
+        for match in matches:
+            target_id = match['target_id']
+            
+            # Skip if already added
+            if target_id in node_map:
+                continue
+                
+            # Extract target info
+            target_uniprot = match['target_uniprot']
+            target_site = match['target_site']
+            similarity = match['similarity']
+            
+            # Create node for match
+            node = {
+                'id': target_id,
+                'name': target_site,
+                'uniprot': target_uniprot,
+                'type': 'match',  # Match site
+                'siteType': match.get('site_type', 'S'),
+                'isKnown': False,  # Assume false for matches
+                'similarity': similarity,
+                'motif': match.get('motif'),
+                'size': 8  # Slightly smaller for match sites
+            }
+            
+            nodes.append(node)
+            node_map[target_id] = node
+            
+            # Create link from site to match
+            link_id = f"{site_id}-{target_id}"
+            
+            # Skip if link already added
+            if link_id in link_map:
+                continue
+                
+            links.append({
+                'source': site_id,
+                'target': target_id,
+                'similarity': similarity
+            })
+            
+            link_map[link_id] = True
+            # Also add reverse direction to avoid duplicate links
+            link_map[f"{target_id}-{site_id}"] = True
+    
+    # Finally add links between matches
+    for match_id, connections in match_interconnections.items():
+        for connection in connections:
+            target_id = connection['target_id']
+            similarity = connection['similarity']
+            
+            # Skip if link already added
+            link_id = f"{match_id}-{target_id}"
+            if link_id in link_map:
+                continue
+                
+            links.append({
+                'source': match_id,
+                'target': target_id,
+                'similarity': similarity
+            })
+            
+            link_map[link_id] = True
+            # Also add reverse direction to avoid duplicate links
+            link_map[f"{target_id}-{match_id}"] = True
+    
+    return {
+        'nodes': nodes,
+        'links': links,
+        'site_matches': site_matches_dict  # Include original match data for reference
+    }

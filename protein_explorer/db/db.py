@@ -1014,12 +1014,16 @@ def find_sequence_matches_batch(site_ids: List[str], min_similarity: float = 0.4
         df = execute_batch_query(
             query, 
             missing_sites, 
-            batch_size=BATCH_SIZES["sequence_matches"],  # Use optimized batch size
+            batch_size=BATCH_SIZES["sequence_matches"],
             id_param_name="site_ids", 
             extra_params={"min_similarity": min_similarity}
         )
         
         if not df.empty:
+            # First, build all the match dictionaries without motif information
+            target_ids_to_fetch = set()  # Set to collect all target IDs
+            match_data_by_query = {}  # Temporary storage for match data
+
             # Process results
             for _, row in df.iterrows():
                 row_dict = row.to_dict()
@@ -1035,9 +1039,12 @@ def find_sequence_matches_batch(site_ids: List[str], min_similarity: float = 0.4
                     query_id = id2
                     target_id = id1
                     
-                # Initialize results for this query if needed
-                if query_id not in cached_results:
-                    cached_results[query_id] = []
+                # Add target_id to the set of IDs we need to fetch
+                target_ids_to_fetch.add(target_id)
+                    
+                # Initialize storage for this query if needed
+                if query_id not in match_data_by_query:
+                    match_data_by_query[query_id] = []
                     
                 # Parse target info
                 target_parts = target_id.split('_')
@@ -1065,18 +1072,31 @@ def find_sequence_matches_batch(site_ids: List[str], min_similarity: float = 0.4
                         "similarity": similarity
                     }
                     
-                    # Get motif if possible and ensure it's uppercase
-                    try:
-                        target_data = get_phosphosite_data(target_id)
-                        if target_data and 'SITE_+/-7_AA' in target_data and target_data['SITE_+/-7_AA']:
-                            match_dict['motif'] = target_data['SITE_+/-7_AA'].upper()
-                        elif target_data and 'motif' in target_data and target_data['motif']:
-                            match_dict['motif'] = target_data['motif'].upper()
-                    except Exception as e:
-                        # Continue without motif if we can't get it
-                        logger.debug(f"Could not get motif for {target_id}: {e}")
-                    
-                    cached_results[query_id].append(match_dict)
+                    # Add to the list for this query
+                    match_data_by_query[query_id].append(match_dict)
+            
+            # Fetch all motif data in one batch query
+            if target_ids_to_fetch:
+                target_data_batch = get_phosphosites_batch(list(target_ids_to_fetch))
+                
+                # Now add motif information to each match and build final results
+                for query_id, matches in match_data_by_query.items():
+                    if query_id not in cached_results:
+                        cached_results[query_id] = []
+                        
+                    for match_dict in matches:
+                        target_id = match_dict["target_id"]
+                        target_data = target_data_batch.get(target_id, {})
+                        
+                        # Add motif information if available
+                        if target_data:
+                            if 'SITE_+/-7_AA' in target_data and target_data['SITE_+/-7_AA']:
+                                match_dict['motif'] = target_data['SITE_+/-7_AA'].upper()
+                            elif 'motif' in target_data and target_data['motif']:
+                                match_dict['motif'] = target_data['motif'].upper()
+                        
+                        # Add to the final results
+                        cached_results[query_id].append(match_dict)
         
         # Update cache with new results
         for site_id in missing_sites:
