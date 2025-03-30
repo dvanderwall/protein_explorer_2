@@ -738,9 +738,16 @@ def phosphosite_analysis():
                     # Direct use of batch query without additional complexity
                     sequence_matches_batch = find_sequence_matches_batch(site_ids, min_similarity=0.4)
                     
+                    # Import the sequence matches enhancement function
+                    from protein_explorer.analysis.sequence_analyzer_2 import enhance_sequence_matches
+                    
                     # Organize matches by site for display
                     sequence_matches = {}
                     for site_id, matches in sequence_matches_batch.items():
+                        # Skip empty match lists
+                        if not matches:
+                            continue
+                            
                         # Get the site name from the site_id
                         site_parts = site_id.split('_')
                         if len(site_parts) >= 2:
@@ -757,7 +764,9 @@ def phosphosite_analysis():
                                 
                             # Add matches to the dictionary if there are any
                             if matches:
-                                sequence_matches[site_name] = matches
+                                # Enhance matches with supplementary data
+                                enhanced_matches = enhance_sequence_matches(matches)
+                                sequence_matches[site_name] = enhanced_matches
                     
                     results['sequence_matches'] = sequence_matches
                 except Exception as e:

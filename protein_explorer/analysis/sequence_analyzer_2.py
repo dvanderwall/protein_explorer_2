@@ -96,6 +96,7 @@ def extract_motif_from_site_id(site_id: str) -> Optional[str]:
 def enhance_sequence_matches(matches: List[Dict]) -> List[Dict]:
     """
     Enhance sequence matches with additional information from the database.
+    Makes sure site types and motif sequences are consistent.
     
     Args:
         matches: List of match dictionaries from find_sequence_matches
@@ -103,43 +104,111 @@ def enhance_sequence_matches(matches: List[Dict]) -> List[Dict]:
     Returns:
         Enhanced list of match dictionaries
     """
+    # Configure logging
+    import logging
+    logger = logging.getLogger(__name__)
+    
     # If no matches, return empty list
     if not matches:
+        logger.info("No matches provided to enhance_sequence_matches")
         return []
+    
+    logger.info(f"Enhancing {len(matches)} sequence matches")
+    
+    # Debug: Check first match structure
+    if matches and len(matches) > 0:
+        logger.info(f"Sample match keys: {list(matches[0].keys())}")
     
     enhanced_matches = []
     
     # Extract target IDs for batch query
-    target_ids = [match['target_id'] for match in matches]
-    
-    # Batch query for supplementary data
-    supp_data_batch = get_phosphosites_batch(target_ids)
-    
+    target_ids = []
     for match in matches:
-        # Create enhanced match from original
-        enhanced = match.copy()
-        
-        # Add motif if available
-        target_id = match['target_id']
-        
-        # First check if motif is already in the match
-        if 'motif' not in enhanced or not enhanced['motif']:
-            # If not, try to get from the batch query results
-            if target_id in supp_data_batch:
-                site_data = supp_data_batch[target_id]
-                if 'SITE_+/-7_AA' in site_data and site_data['SITE_+/-7_AA']:
-                    enhanced['motif'] = site_data['SITE_+/-7_AA']
-                elif 'motif' in site_data and site_data['motif']:
-                    enhanced['motif'] = site_data['motif']
-            
-            # If still not found, try direct query
-            if 'motif' not in enhanced or not enhanced['motif']:
-                motif = extract_motif_from_site_id(target_id)
-                if motif:
-                    enhanced['motif'] = motif
-        
-        enhanced_matches.append(enhanced)
+        if 'target_id' in match and match['target_id']:
+            target_ids.append(match['target_id'])
     
+    logger.info(f"Found {len(target_ids)} target IDs for batch query")
+    
+    # Batch query for supplementary data if we have any target IDs
+    supp_data_batch = {}
+    if target_ids:
+        try:
+            supp_data_batch = get_phosphosites_batch(target_ids)
+            logger.info(f"Retrieved supplementary data for {len(supp_data_batch)} sites")
+        except Exception as e:
+            logger.error(f"Error getting phosphosite batch data: {e}")
+    
+    # Process each match individually with careful error handling
+    for match_index, match in enumerate(matches):
+        try:
+            # Create enhanced match from original
+            enhanced = match.copy()
+            
+            # Add motif if available
+            target_id = match.get('target_id')
+            
+            # First check if motif is already in the match
+            if ('motif' not in enhanced or enhanced.get('motif') is None or 
+                    (isinstance(enhanced.get('motif'), str) and not enhanced['motif'].strip())):
+                # If not, try to get from the batch query results
+                if target_id and target_id in supp_data_batch:
+                    site_data = supp_data_batch[target_id]
+                    
+                    if 'SITE_+/-7_AA' in site_data and site_data.get('SITE_+/-7_AA'):
+                        enhanced['motif'] = str(site_data['SITE_+/-7_AA']).upper()  # Ensure uppercase
+                    elif 'motif' in site_data and site_data.get('motif'):
+                        enhanced['motif'] = str(site_data['motif']).upper()  # Ensure uppercase
+            # If motif exists but isn't uppercase, make sure it is
+            elif enhanced.get('motif') and isinstance(enhanced['motif'], str):
+                enhanced['motif'] = enhanced['motif'].upper()
+                
+            # Check for site type in Residue field from supplementary data
+            if target_id and target_id in supp_data_batch:
+                site_data = supp_data_batch[target_id]
+                print("HERE IS THE SITE DATA, IS RESIDUE COLUMN PRESENT?")
+                print(site_data)
+                # Get site type from Residue/residue column if available
+                if 'Residue' in site_data and site_data.get('Residue') in 'STY':
+                    enhanced['site_type'] = site_data['Residue']
+                    logger.debug(f"Using site type {enhanced['site_type']} from Residue column for {target_id}")
+                elif 'residue' in site_data and site_data.get('residue') in 'STY':
+                    enhanced['site_type'] = site_data['residue']
+                    logger.debug(f"Using site type {enhanced['site_type']} from residue column for {target_id}")
+                    
+                # Add is_known_phosphosite if available
+                if 'is_known_phosphosite' in site_data:
+                    try:
+                        enhanced['is_known_phosphosite'] = float(site_data['is_known_phosphosite'])
+                    except (ValueError, TypeError):
+                        enhanced['is_known_phosphosite'] = 0.0  # Default to not known
+                
+                # Add other useful fields
+                for field in ['site_plddt', 'mean_plddt', 'nearby_count', 
+                             'surface_accessibility', 'acidic_percentage', 
+                             'basic_percentage', 'aromatic_percentage']:
+                    if field in site_data and site_data[field] is not None:
+                        try:
+                            enhanced[field] = site_data[field]
+                        except Exception as e:
+                            logger.warning(f"Error adding field {field}: {e}")
+                
+            # IMPORTANT: Leave target_site as-is - don't add 'S' prefix
+            # Just make sure it exists
+            if 'target_site' not in enhanced or enhanced.get('target_site') is None:
+                # Extract site number from target_id if possible
+                if target_id and '_' in target_id:
+                    site_number = target_id.split('_')[1]
+                    enhanced['target_site'] = site_number
+                    logger.debug(f"Set target_site to {site_number} from target_id for {target_id}")
+            
+            enhanced_matches.append(enhanced)
+            
+        except Exception as e:
+            logger.error(f"Error enhancing match {match_index}: {e}")
+            # Add the original match without enhancement rather than skipping it
+            enhanced_matches.append(match)
+    
+    logger.info(f"Finished enhancing {len(enhanced_matches)} sequence matches")
     return enhanced_matches
 
 def analyze_motif_conservation(matches: List[Dict], 
