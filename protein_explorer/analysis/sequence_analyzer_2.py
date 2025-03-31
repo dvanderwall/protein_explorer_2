@@ -959,7 +959,6 @@ def find_sequence_matches_batch(site_ids: List[str],
 
 
 # This function should be added to protein_explorer/analysis/sequence_analyzer_2.py
-
 def find_sequence_matches_with_connections(site_ids: List[str], min_similarity: float = 0.4) -> Dict:
     """
     Find sequence similarity matches for multiple sites in a batch,
@@ -976,7 +975,6 @@ def find_sequence_matches_with_connections(site_ids: List[str], min_similarity: 
         return {'nodes': [], 'links': [], 'site_matches': {}}
     
     # Get batch match results for the sites
-    from protein_explorer.db import find_sequence_matches_batch
     site_matches_dict = find_sequence_matches_batch(site_ids, min_similarity)
     
     # Set to track all unique match IDs for the next query
@@ -1017,13 +1015,15 @@ def find_sequence_matches_with_connections(site_ids: List[str], min_similarity: 
     node_map = {}  # Track nodes we've added
     link_map = {}  # Track links we've added to avoid duplicates
     
-    # OPTIMIZATION: Get all supplementary data in one batch query
+    # Get all supplementary data in one batch query
     # Collect all site IDs that need supplementary data (original sites + matches)
     all_site_ids = site_ids.copy()
+    all_site_ids.extend(list(all_match_ids))
     
-    # Build network with nodes and links
+    # Get supplementary data for all sites in one batch
+    supp_data_batch = get_phosphosites_batch(all_site_ids)
+    
     # First add nodes for the query sites
-    query_site_info = {}
     for site_id in site_ids:
         # Split site_id to get uniprot_id and site number
         parts = site_id.split('_')
@@ -1031,8 +1031,6 @@ def find_sequence_matches_with_connections(site_ids: List[str], min_similarity: 
             continue
             
         uniprot_id = parts[0]
-        
-        # Try to extract site name from the second part
         site_num = parts[1]
         
         # Extract site type if possible (S, T, Y)
@@ -1045,23 +1043,12 @@ def find_sequence_matches_with_connections(site_ids: List[str], min_similarity: 
             site_name = site_num
             site_type = None
         
-        # Store basic info for later
-        query_site_info[site_id] = {
-            'site_name': site_name,
-            'uniprot_id': uniprot_id,
-            'site_type': site_type
-        }
-    
-    # Get all supplementary data in one batch query
-    supp_data_batch = get_phosphosites_batch(all_site_ids)
-    
-    # Create nodes for query sites
-    for site_id, site_info in query_site_info.items():
         # Get supplementary data if available
         site_data = supp_data_batch.get(site_id, {})
         
         motif = None
         is_known = False
+        known_kinase = None
         
         if site_data:
             # Extract motif
@@ -1073,16 +1060,24 @@ def find_sequence_matches_with_connections(site_ids: List[str], min_similarity: 
             # Check if known
             if 'is_known_phosphosite' in site_data:
                 is_known = site_data['is_known_phosphosite']
+                
+            # Check for known kinase
+            for i in range(1, 6):
+                kinase_field = f"KINASE_{i}"
+                if kinase_field in site_data and site_data[kinase_field]:
+                    known_kinase = site_data[kinase_field]
+                    break
         
         # Create node
         node = {
             'id': site_id,
-            'name': site_info['site_name'],
-            'uniprot': site_info['uniprot_id'],
+            'name': site_name,
+            'uniprot': uniprot_id,
             'type': 'protein',  # Protein site
-            'siteType': site_info['site_type'] or 'S',  # Default to S if not specified
+            'siteType': site_type or 'S',  # Default to S if not specified
             'isKnown': is_known,
             'motif': motif,
+            'known_kinase': known_kinase,
             'size': 10  # Slightly larger for protein sites
         }
         
@@ -1103,6 +1098,27 @@ def find_sequence_matches_with_connections(site_ids: List[str], min_similarity: 
             target_site = match['target_site']
             similarity = match['similarity']
             
+            # Get supplementary data for this match
+            target_data = supp_data_batch.get(target_id, {})
+            
+            motif = match.get('motif')
+            known_kinase = None
+            
+            if target_data:
+                # Extract motif if not already present
+                if not motif:
+                    if 'SITE_+/-7_AA' in target_data and target_data['SITE_+/-7_AA']:
+                        motif = target_data['SITE_+/-7_AA']
+                    elif 'motif' in target_data and target_data['motif']:
+                        motif = target_data['motif']
+                
+                # Get known kinase
+                for i in range(1, 6):
+                    kinase_field = f"KINASE_{i}"
+                    if kinase_field in target_data and target_data[kinase_field]:
+                        known_kinase = target_data[kinase_field]
+                        break
+            
             # Create node for match
             node = {
                 'id': target_id,
@@ -1112,7 +1128,8 @@ def find_sequence_matches_with_connections(site_ids: List[str], min_similarity: 
                 'siteType': match.get('site_type', 'S'),
                 'isKnown': False,  # Assume false for matches
                 'similarity': similarity,
-                'motif': match.get('motif'),
+                'motif': motif,
+                'known_kinase': known_kinase,
                 'size': 8  # Slightly smaller for match sites
             }
             

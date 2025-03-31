@@ -1323,3 +1323,233 @@ def analyze_residue_distributions(structural_matches):
         'group_counts': group_counts,
         'conserved': conserved
     }
+
+def find_structural_matches_with_connections(site_ids: List[str], rmsd_threshold: float = 5.0) -> Dict:
+    """
+    Find structural matches for multiple sites in a batch,
+    including connections between the similar sites.
+    
+    Args:
+        site_ids: List of site IDs in format 'UniProtID_ResidueNumber'
+        rmsd_threshold: Maximum RMSD value for matches
+        
+    Returns:
+        Dictionary with nodes, edges and required data for network visualization
+    """
+    if not site_ids:
+        return {'nodes': [], 'links': [], 'site_matches': {}}
+    
+    # Get batch match results for the sites
+    site_matches_dict = find_structural_matches_batch(site_ids, rmsd_threshold)
+    
+    # Set to track all unique match IDs for the next query
+    all_match_ids = set()
+    
+    # Collect all matches for each site
+    for site_id, matches in site_matches_dict.items():
+        for match in matches:
+            if 'target_id' in match:
+                all_match_ids.add(match['target_id'])
+    
+    # Find interconnections between the matches themselves
+    # This requires an additional batch query
+    match_interconnections = {}
+    if all_match_ids:
+        # Convert to list for the query
+        match_id_list = list(all_match_ids)
+        
+        # Find matches among the matches themselves
+        match_matches = find_structural_matches_batch(match_id_list, rmsd_threshold)
+        
+        # Store valid interconnections
+        for match_id, connections in match_matches.items():
+            valid_connections = []
+            for connection in connections:
+                # Only include connections to other matches we already know about
+                # Filter by our threshold and avoid self-connections
+                if ('target_id' in connection and
+                    connection['target_id'] in all_match_ids and 
+                    connection['target_id'] != match_id and
+                    connection['rmsd'] <= rmsd_threshold):
+                    valid_connections.append(connection)
+            
+            if valid_connections:
+                match_interconnections[match_id] = valid_connections
+    
+    # Build network with nodes and links
+    nodes = []
+    links = []
+    node_map = {}  # Track nodes we've added
+    link_map = {}  # Track links we've added to avoid duplicates
+    
+    # Get all supplementary data in one batch query
+    all_site_ids = site_ids.copy()
+    all_site_ids.extend(list(all_match_ids))
+    
+    # Get supplementary data for all sites in one batch
+    supp_data_batch = get_phosphosites_batch(all_site_ids)
+    
+    # First add nodes for the query sites
+    for site_id in site_ids:
+        # Split site_id to get uniprot_id and site number
+        parts = site_id.split('_')
+        if len(parts) < 2:
+            continue
+            
+        uniprot_id = parts[0]
+        site_num = parts[1]
+        
+        # Extract site type if possible (S, T, Y)
+        site_match = re.match(r'([STY])(\d+)', site_num)
+        if site_match:
+            site_type = site_match.group(1)
+            site_num = site_match.group(2)
+            site_name = f"{site_type}{site_num}"
+        else:
+            site_name = site_num
+            site_type = None
+        
+        # Get supplementary data if available
+        site_data = supp_data_batch.get(site_id, {})
+        
+        motif = None
+        is_known = False
+        known_kinase = None
+        
+        if site_data:
+            # Extract motif
+            if 'SITE_+/-7_AA' in site_data and site_data['SITE_+/-7_AA']:
+                motif = site_data['SITE_+/-7_AA']
+            elif 'motif' in site_data and site_data['motif']:
+                motif = site_data['motif']
+                
+            # Check if known
+            if 'is_known_phosphosite' in site_data:
+                is_known = site_data['is_known_phosphosite']
+                
+            # Check for known kinase
+            for i in range(1, 6):
+                kinase_field = f"KINASE_{i}"
+                if kinase_field in site_data and site_data[kinase_field]:
+                    known_kinase = site_data[kinase_field]
+                    break
+        
+        # Create node
+        node = {
+            'id': site_id,
+            'name': site_name,
+            'uniprot': uniprot_id,
+            'type': 'protein',  # Protein site
+            'siteType': site_type or 'S',  # Default to S if not specified
+            'isKnown': is_known,
+            'motif': motif,
+            'known_kinase': known_kinase,
+            'size': 10  # Slightly larger for protein sites
+        }
+        
+        nodes.append(node)
+        node_map[site_id] = node
+    
+    # Then add nodes and links for the matches
+    for site_id, matches in site_matches_dict.items():
+        for match in matches:
+            target_id = match.get('target_id')
+            if not target_id:
+                continue
+                
+            # Skip if already added
+            if target_id in node_map:
+                continue
+                
+            # Extract target info
+            target_uniprot = match.get('target_uniprot')
+            target_site = match.get('target_site')
+            rmsd = match.get('rmsd')
+            
+            if not target_uniprot or not target_site or not rmsd:
+                continue
+            
+            # Get supplementary data for this match
+            target_data = supp_data_batch.get(target_id, {})
+            
+            motif = match.get('motif')
+            known_kinase = None
+            
+            if target_data:
+                # Extract motif if not already present
+                if not motif:
+                    if 'SITE_+/-7_AA' in target_data and target_data['SITE_+/-7_AA']:
+                        motif = target_data['SITE_+/-7_AA']
+                    elif 'motif' in target_data and target_data['motif']:
+                        motif = target_data['motif']
+                
+                # Get known kinase
+                for i in range(1, 6):
+                    kinase_field = f"KINASE_{i}"
+                    if kinase_field in target_data and target_data[kinase_field]:
+                        known_kinase = target_data[kinase_field]
+                        break
+            
+            # Create node for match
+            node = {
+                'id': target_id,
+                'name': target_site,
+                'uniprot': target_uniprot,
+                'type': 'match',  # Match site
+                'siteType': target_site[0] if target_site and target_site[0] in 'STY' else 'S',
+                'isKnown': False,  # Assume false for matches
+                'rmsd': rmsd,
+                'motif': motif,
+                'known_kinase': known_kinase,
+                'size': 8  # Slightly smaller for match sites
+            }
+            
+            nodes.append(node)
+            node_map[target_id] = node
+            
+            # Create link from site to match
+            link_id = f"{site_id}-{target_id}"
+            
+            # Skip if link already added
+            if link_id in link_map:
+                continue
+                
+            links.append({
+                'source': site_id,
+                'target': target_id,
+                'rmsd': rmsd
+            })
+            
+            link_map[link_id] = True
+            # Also add reverse direction to avoid duplicate links
+            link_map[f"{target_id}-{site_id}"] = True
+    
+    # Finally add links between matches
+    for match_id, connections in match_interconnections.items():
+        for connection in connections:
+            target_id = connection.get('target_id')
+            rmsd = connection.get('rmsd')
+            
+            if not target_id or not rmsd:
+                continue
+            
+            # Skip if link already added
+            link_id = f"{match_id}-{target_id}"
+            if link_id in link_map:
+                continue
+                
+            links.append({
+                'source': match_id,
+                'target': target_id,
+                'rmsd': rmsd
+            })
+            
+            link_map[link_id] = True
+            # Also add reverse direction to avoid duplicate links
+            link_map[f"{target_id}-{match_id}"] = True
+    
+    return {
+        'nodes': nodes,
+        'links': links,
+        'site_matches': site_matches_dict  # Include original match data for reference
+    }

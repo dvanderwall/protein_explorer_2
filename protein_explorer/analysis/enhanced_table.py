@@ -48,22 +48,25 @@ def enhance_phosphosite_table(phosphosites, protein_uniprot_id):
             if 'hydrophobicityScore' not in site:
                 site['hydrophobicityScore'] = calculate_hydrophobicity_score(site['motif'])
 
-        # Extract known kinase information
-        known_kinase = None
+        # Extract all known kinase information into a list
+        known_kinases = []
         for i in range(1, 6):
             kinase_field = f"KINASE_{i}"
             if kinase_field in site and site[kinase_field] and site[kinase_field] != 'unlabeled':
-                known_kinase = site[kinase_field]
-                break
+                known_kinases.append(site[kinase_field])
                 
         # Check other possible kinase field names
-        if not known_kinase:
+        if not known_kinases:
             for field in ['known_kinase', 'knownKinase']:
                 if field in site and site[field] and site[field] != 'unlabeled':
-                    known_kinase = site[field]
-                    break
-                    
-        site['known_kinase'] = known_kinase or ''
+                    # Handle cases where the field might contain comma-separated values
+                    if isinstance(site[field], str) and ',' in site[field]:
+                        known_kinases.extend([k.strip() for k in site[field].split(',')])
+                    else:
+                        known_kinases.append(site[field])
+        
+        # Store unique kinases as a comma-separated string
+        site['known_kinases'] = ', '.join(list(dict.fromkeys(known_kinases))) if known_kinases else ''
     
     # Generate the HTML
     html = """
@@ -169,7 +172,7 @@ def enhance_phosphosite_table(phosphosites, protein_uniprot_id):
             site_plddt_text = f"{site_plddt:.1f}"
         
         # Get the kinase info for display
-        known_kinase = site.get('known_kinase', '')
+        kinases_display = site.get('known_kinases', '')
         
         # Determine if the site has complete structural analysis
         site_id = f"{protein_uniprot_id}_{resno}"
@@ -196,11 +199,12 @@ def enhance_phosphosite_table(phosphosites, protein_uniprot_id):
             data-bfactor="{site.get('bFactorGradient', 0)}"
             data-hydrophobicity="{site.get('hydrophobicityScore', 0)}"
             data-known="{is_known}"
-            data-kinase="{known_kinase}"
+            data-kinase="{known_kinases}"
             data-site-id="{site_id}"
         """
 
         # Include the Kinase column in the row rendering
+        # Include the Kinase column in the row rendering with proper handling of multiple kinases
         html += f"""
         <tr {row_style} {data_attrs}>
             <td><a href="/site/{protein_uniprot_id}/{site.get('site', '')}" class="site-link" data-resno="{resno}"><strong id="site-{resno}">{site.get('site', '')}</strong></a></td>
@@ -210,7 +214,7 @@ def enhance_phosphosite_table(phosphosites, protein_uniprot_id):
             <td>{nearby_count}</td>
             <td>{surface_access_text}</td>
             <td>{"Yes" if is_known else "No"}</td>
-            <td class="kinase-col">{known_kinase if known_kinase else "—"}</td>
+            <td class="kinase-col">{format_kinase_badges(kinases_display) if kinases_display else "—"}</td>
             <td>
                 <a href="/site/{protein_uniprot_id}/{site.get('site', '')}" class="btn btn-sm btn-outline-primary">
                     Details
@@ -254,6 +258,21 @@ def enhance_phosphosite_table(phosphosites, protein_uniprot_id):
     """
     
     return html
+
+def format_kinase_badges(kinases_str):
+    """Format comma-separated kinase string as badges."""
+    if not kinases_str:
+        return "—"
+    
+    kinases = [k.strip() for k in kinases_str.split(',') if k.strip()]
+    if not kinases:
+        return "—"
+    
+    # Display as badges for multiple kinases, plain text for single kinase
+    if len(kinases) > 1:
+        return ' '.join([f'<span class="badge bg-primary me-1">{k}</span>' for k in kinases])
+    else:
+        return kinases[0]  # Single kinase displayed as text
     
 def calculate_acidic_percentage(motif, window=5):
     """Calculate percentage of acidic residues (D, E) in a window around the phosphosite."""

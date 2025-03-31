@@ -7,6 +7,15 @@ from protein_explorer.db.db import get_phosphosite_data, get_phosphosites_batch
 
 logger = logging.getLogger(__name__)
 
+# Add/modify in protein_explorer/visualization/protein_phosphosite_network.py
+
+import json
+import logging
+import re
+from protein_explorer.db.db import get_phosphosite_data, get_phosphosites_batch
+
+logger = logging.getLogger(__name__)
+
 def create_phosphosite_network_visualization(protein_uniprot_id, phosphosites=None, structural_matches=None):
     """
     Create a network visualization of phosphosites and their structural matches.
@@ -39,19 +48,33 @@ def create_phosphosite_network_visualization(protein_uniprot_id, phosphosites=No
             elif 'is_known' in site:
                 site_copy['is_known_phosphosite'] = 1.0 if site['is_known'] else 0.0
                 
-            # Add known kinase information if available
-            known_kinase = None
+            # Add all known kinase information 
+            known_kinases = []
             for i in range(1, 6):
                 kinase_field = f"KINASE_{i}"
                 if kinase_field in site and site[kinase_field] and site[kinase_field] != 'unlabeled':
-                    known_kinase = site[kinase_field]
-                    break
+                    known_kinases.append(site[kinase_field])
                     
-            if not known_kinase and 'known_kinase' in site and site['known_kinase'] and site['known_kinase'] != 'unlabeled':
-                known_kinase = site['known_kinase']
+            # Also check known_kinase field
+            if 'known_kinase' in site and site['known_kinase'] and site['known_kinase'] != 'unlabeled':
+                # Handle case where known_kinase might be a comma-separated list
+                if isinstance(site['known_kinase'], str) and ',' in site['known_kinase']:
+                    kinase_values = [k.strip() for k in site['known_kinase'].split(',')]
+                    known_kinases.extend(kinase_values)
+                else:
+                    known_kinases.append(site['known_kinase'])
                 
-            if known_kinase:
-                site_copy['knownKinase'] = known_kinase
+            # Store unique non-empty kinases as a comma-separated string
+            if known_kinases:
+                # Remove duplicates while preserving order
+                unique_kinases = []
+                seen = set()
+                for kinase in known_kinases:
+                    if kinase and kinase not in seen:
+                        seen.add(kinase)
+                        unique_kinases.append(kinase)
+                
+                site_copy['knownKinase'] = ', '.join(unique_kinases)
                 
             processed_phosphosites.append(site_copy)
     
@@ -118,20 +141,34 @@ def create_phosphosite_network_visualization(protein_uniprot_id, phosphosites=No
                 if target_id and target_id in supplementary_data:
                     target_data = supplementary_data[target_id]
                     
-                    # Extract known kinase information
-                    known_kinase = None
-                    for i in range(1, 6):
-                        kinase_field = f"KINASE_{i}"
+                    # Extract all known kinase information, not just the first one
+                    known_kinases = []
+                    for j in range(1, 6):
+                        kinase_field = f"KINASE_{j}"
                         if kinase_field in target_data and target_data[kinase_field] and target_data[kinase_field] != 'unlabeled':
-                            known_kinase = target_data[kinase_field]
-                            break
+                            known_kinases.append(target_data[kinase_field])
                     
-                    if not known_kinase and 'known_kinase' in target_data and target_data['known_kinase'] and target_data['known_kinase'] != 'unlabeled':
-                        known_kinase = target_data['known_kinase']
+                    # Also check for known_kinase
+                    if 'known_kinase' in target_data and target_data['known_kinase'] and target_data['known_kinase'] != 'unlabeled':
+                        # Handle case where known_kinase might be a comma-separated list
+                        if isinstance(target_data['known_kinase'], str) and ',' in target_data['known_kinase']:
+                            kinase_values = [k.strip() for k in target_data['known_kinase'].split(',')]
+                            known_kinases.extend(kinase_values)
+                        else:
+                            known_kinases.append(target_data['known_kinase'])
                     
-                    # Set known kinase in match data
-                    if known_kinase:
-                        match_copy['known_kinase'] = known_kinase
+                    # Store unique non-empty kinases as a comma-separated string
+                    if known_kinases:
+                        # Remove duplicates while preserving order
+                        unique_kinases = []
+                        seen = set()
+                        for kinase in known_kinases:
+                            if kinase and kinase not in seen:
+                                seen.add(kinase)
+                                unique_kinases.append(kinase)
+                        
+                        # Set known_kinase in match data
+                        match_copy['known_kinase'] = ', '.join(unique_kinases)
                     
                     # Add additional supplementary data
                     if 'SITE_+/-7_AA' in target_data and target_data['SITE_+/-7_AA']:

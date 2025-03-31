@@ -14,6 +14,14 @@ DB_PASS = os.environ.get('DB_PASS', '@Bismark6')
 DB_NAME = os.environ.get('DB_NAME', 'kinoplex-db')
 DB_PORT = int(os.environ.get('DB_PORT', '3306'))
 
+
+
+
+
+
+
+
+
 # List of index creation statements with prefix lengths for TEXT/BLOB columns
 # For text columns, typically using 50-255 characters works well for indexing
 INDEX_STATEMENTS = [

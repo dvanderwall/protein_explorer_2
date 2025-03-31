@@ -184,7 +184,7 @@ function sequenceNetworkVisualization(proteinUniprotId) {
                 <h6 class="border-bottom pb-2 mb-2">${d.name} - ${d.uniprot}</h6>
                 <p><strong>Site Type:</strong> ${d.siteType}</p>
                 <p><strong>Known Site:</strong> ${(d.is_known_phosphosite === 1 || d.is_known_phosphosite === 1.0 || d.is_known === true) ? 'Yes' : 'No'}</p>
-                ${d.known_kinase ? `<p><strong>Known Kinase:</strong> <span class="badge bg-primary">${d.known_kinase}</span></p>` : ''}
+                ${d.known_kinase ? `<p><strong>Known Kinase${d.known_kinase.includes(',') ? 's' : ''}:</strong> ${formatKinaseList(d.known_kinase)}</p>` : ''}
                 ${d.mean_plddt ? `<p><strong>Mean pLDDT:</strong> ${d.mean_plddt}</p>` : ''}
                 ${d.nearby_count ? `<p><strong>Nearby Residues:</strong> ${d.nearby_count}</p>` : ''}
                 ${d.surface_accessibility ? `<p><strong>Surface Access:</strong> ${typeof d.surface_accessibility === 'number' ? d.surface_accessibility.toFixed(1) : d.surface_accessibility}%</p>` : ''}
@@ -198,7 +198,7 @@ function sequenceNetworkVisualization(proteinUniprotId) {
                 <h6 class="border-bottom pb-2 mb-2">${d.name} - ${d.uniprot}</h6>
                 <p><strong>Site Type:</strong> ${d.siteType}</p>
                 <p><strong>Similarity:</strong> ${d.similarity ? (d.similarity * 100).toFixed(1) + '%' : 'N/A'}</p>
-                ${d.known_kinase ? `<p><strong>Known Kinase:</strong> <span class="badge bg-primary">${d.known_kinase}</span></p>` : ''}
+                ${d.known_kinase ? `<p><strong>Known Kinase${d.known_kinase.includes(',') ? 's' : ''}:</strong> ${formatKinaseList(d.known_kinase)}</p>` : ''}
                 ${d.motif ? `<p><strong>Motif:</strong> <code>${d.motif}</code></p>` : ''}
                 ${d.mean_plddt ? `<p><strong>Mean pLDDT:</strong> ${d.mean_plddt}</p>` : ''}
                 ${d.nearby_count ? `<p><strong>Nearby Residues:</strong> ${d.nearby_count}</p>` : ''}
@@ -211,6 +211,16 @@ function sequenceNetworkVisualization(proteinUniprotId) {
         }
         
         infoPanel.innerHTML = content;
+    }
+    
+    // Helper function to format kinase list with badges
+    function formatKinaseList(kinaseString) {
+        if (!kinaseString) return '';
+        
+        const kinases = kinaseString.split(',').map(k => k.trim());
+        return kinases.map(kinase => 
+            `<span class="badge bg-primary me-1">${kinase}</span>`
+        ).join(' ');
     }
     
     // Node interactions
@@ -661,44 +671,51 @@ function cleanJson(jsonString) {
 // Enhanced function to extract kinase information from site data
 // Looks for kinase data in multiple possible locations
 function extractKinaseInfo(data) {
+    // Create an array to collect all kinases
+    const kinases = [];
+    
     // Check all possible locations for kinase information
     
     // Direct known_kinase field
     if (data.known_kinase && typeof data.known_kinase === 'string' && data.known_kinase !== 'unlabeled') {
-        return data.known_kinase;
+        kinases.push(data.known_kinase);
     }
     
     // PhosphositePlus format KINASE_1 through KINASE_5
     for (let i = 1; i <= 5; i++) {
         const kinaseField = `KINASE_${i}`;
         if (data[kinaseField] && typeof data[kinaseField] === 'string' && data[kinaseField] !== 'unlabeled') {
-            return data[kinaseField];
+            kinases.push(data[kinaseField]);
         }
     }
     
     // Target known kinase field
     if (data.target_known_kinase && typeof data.target_known_kinase === 'string' && data.target_known_kinase !== 'unlabeled') {
-        return data.target_known_kinase;
+        kinases.push(data.target_known_kinase);
     }
     
     // Check for kinases array
     if (data.kinases && Array.isArray(data.kinases) && data.kinases.length > 0) {
-        // Find first non-null, non-undefined, non-empty kinase
+        // Add all valid kinases from the array
         for (const kinase of data.kinases) {
             if (kinase && typeof kinase === 'string' && kinase !== 'unlabeled') {
-                return kinase;
+                kinases.push(kinase);
             }
         }
     }
     
     // Check if top_kinases is available with scores
     if (data.top_kinases && Array.isArray(data.top_kinases) && data.top_kinases.length > 0) {
-        // Return highest scoring kinase
+        // Add top kinase
         const topKinase = data.top_kinases[0];
-        return topKinase.kinase || topKinase.name;
+        const kinaseName = topKinase.kinase || topKinase.name;
+        if (kinaseName) {
+            kinases.push(kinaseName);
+        }
     }
     
-    return null;
+    // Remove duplicates and return as a comma-separated string
+    return [...new Set(kinases)].join(', ') || null;
 }
 
 // Function to search for motif information elsewhere on the page

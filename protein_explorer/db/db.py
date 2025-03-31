@@ -136,6 +136,16 @@ TABLES = {
             "Target": "idx_target"
         }
     },
+    "Sequence_Similarity_Edges_4": {
+        "columns": [
+            "ID1", "ID2", "Similarity"
+        ],
+        "indexes": {
+            "ID1": "idx_id1_sim",
+            "ID2": "idx_id2_sim",
+            "Similarity": ["idx_id1_sim", "idx_id2_sim"]
+        }
+    },
     "Sequence_Similarity_Edges_7": {
         "columns": [
             "ID1", "ID2", "Similarity"
@@ -186,14 +196,14 @@ QUERY_TEMPLATES = {
     """,
     
     "find_sequence_matches": """
-        SELECT * FROM `Sequence_Similarity_Edges_7`
+        SELECT * FROM `Sequence_Similarity_Edges_4`
         WHERE (`ID1` = :site_id OR `ID2` = :site_id) AND `Similarity` >= :min_similarity
         ORDER BY `Similarity` DESC
         /* Uses indexes: idx_id1_sim and idx_id2_sim (composite) */
     """,
     
     "find_sequence_matches_batch": """
-        SELECT * FROM `Sequence_Similarity_Edges_7`
+        SELECT * FROM `Sequence_Similarity_Edges_4`
         WHERE (`ID1` IN :site_ids OR `ID2` IN :site_ids) AND `Similarity` >= :min_similarity
         ORDER BY `Similarity` DESC
         /* Uses indexes: idx_id1_sim and idx_id2_sim (composite) */
@@ -245,7 +255,7 @@ QUERY_TEMPLATES = {
     """,
     
     "count_sequence_matches": """
-        SELECT COUNT(*) as count FROM `Sequence_Similarity_Edges_7`
+        SELECT COUNT(*) as count FROM `Sequence_Similarity_Edges_4`
     """,
     
     "get_kinases_list": """
@@ -277,7 +287,7 @@ QUERY_TEMPLATES = {
     
     "get_top_similar_sites": """
         SELECT `ID1`, `ID2`, `Similarity` 
-        FROM `Sequence_Similarity_Edges_7`
+        FROM `Sequence_Similarity_Edges_4`
         WHERE (`ID1` = :site_id OR `ID2` = :site_id)
         AND `Similarity` >= :min_similarity
         ORDER BY `Similarity` DESC
@@ -510,7 +520,7 @@ def execute_batch_query(query_template: str, id_list: List[str], batch_size: int
             batch_size = BATCH_SIZES["phosphosites"]
         elif "Structural_Similarity_Edges" in query_template:
             batch_size = BATCH_SIZES["structural_matches"]
-        elif "Sequence_Similarity_Edges_7" in query_template:
+        elif "Sequence_Similarity_Edges_4" in query_template:
             batch_size = BATCH_SIZES["sequence_matches"]
         elif "Kinase_Scores" in query_template:
             batch_size = BATCH_SIZES["kinase_scores"]
