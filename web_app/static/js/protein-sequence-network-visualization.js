@@ -289,7 +289,7 @@ function sequenceNetworkVisualization(proteinUniprotId) {
     console.log('Sequence network visualization setup complete');
 }
 
-// Add a detailed legend for node colors
+// 1. Update the addNetworkLegend function to include all node types with correct colors
 function addNetworkLegend(svg, width) {
     const legend = svg.append("g")
         .attr("class", "legend")
@@ -302,13 +302,6 @@ function addNetworkLegend(svg, width) {
         { color: "#E91E63", label: "Sequence-similar sites" }
     ];
     
-    const legendItems = legend.selectAll(".legend-item")
-        .data(legendData)
-        .enter()
-        .append("g")
-        .attr("class", "legend-item")
-        .attr("transform", (d, i) => `translate(0, ${i * 20})`);
-    
     // Add background for better visibility
     legend.append("rect")
         .attr("x", -5)
@@ -320,15 +313,24 @@ function addNetworkLegend(svg, width) {
         .attr("rx", 5)
         .attr("ry", 5);
     
-    // Add colored circles
-    legendItems.append("square")
+    const legendItems = legend.selectAll(".legend-item")
+        .data(legendData)
+        .enter()
+        .append("g")
+        .attr("class", "legend-item")
+        .attr("transform", (d, i) => `translate(0, ${i * 20})`);
+    
+    // Add colored circles (not squares - fix this issue)
+    legendItems.append("circle")
         .attr("r", 6)
+        .attr("cx", 6)
+        .attr("cy", 4)
         .attr("fill", d => d.color);
     
     // Add labels
     legendItems.append("text")
         .attr("x", 15)
-        .attr("y", 4)
+        .attr("y", 8)
         .text(d => d.label)
         .attr("font-size", "12px");
 }
@@ -912,7 +914,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// Update the legend in the container's HTML to match the new color scheme
+// 2. Update the updateNetworkLegendHTML function to ensure all legend items are present
 function updateNetworkLegendHTML() {
     const legendContainer = document.querySelector('.d-flex.align-items-center.flex-wrap');
     if (legendContainer) {
@@ -929,11 +931,12 @@ function updateNetworkLegendHTML() {
                 <div style="width: 16px; height: 16px; background-color: #9C27B0; border-radius: 50%; margin-right: 6px;"></div>
                 <span class="small">Sites with known kinase</span>
             </div>
-            <div class="d-flex align-items-center me-4 mb-2">
+            <div class="d-flex align-items-center mb-2">
                 <div style="width: 16px; height: 16px; background-color: #E91E63; border-radius: 50%; margin-right: 6px;"></div>
                 <span class="small">Sequence-similar sites</span>
             </div>
         `;
     }
 }
+
 

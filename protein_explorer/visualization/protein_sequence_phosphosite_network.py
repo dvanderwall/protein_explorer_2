@@ -219,8 +219,12 @@ def create_sequence_network_visualization(protein_uniprot_id, phosphosites=None,
                         <div style="width: 16px; height: 16px; background-color: #FF9800; border-radius: 50%; margin-right: 6px;"></div>
                         <span class="small">Unknown protein sites</span>
                     </div>
-                    <div class="d-flex align-items-center mb-2">
+                    <div class="d-flex align-items-center me-4 mb-2">
                         <div style="width: 16px; height: 16px; background-color: #9C27B0; border-radius: 50%; margin-right: 6px;"></div>
+                        <span class="small">Sites with known kinase</span>
+                    </div>
+                    <div class="d-flex align-items-center mb-2">
+                        <div style="width: 16px; height: 16px; background-color: #E91E63; border-radius: 50%; margin-right: 6px;"></div>
                         <span class="small">Sequence-similar sites</span>
                     </div>
                 </div>
