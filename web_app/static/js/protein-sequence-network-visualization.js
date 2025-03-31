@@ -124,13 +124,13 @@ function sequenceNetworkVisualization(proteinUniprotId) {
     const sequenceNetworkSimulation = d3.forceSimulation(networkData.nodes)
         .force('link', d3.forceLink(networkData.links)
             .id(d => d.id)
-            .distance(d => 150 * (1 - (d.similarity || 0.5))))
+            .distance(d => 100 * (1 - (d.similarity || 0.5))))
         .force('charge', d3.forceManyBody()
-            .strength(d => d.type === 'protein' ? -200 : -100))
+            .strength(d => d.type === 'protein' ? -50 : -25))
         .force('center', d3.forceCenter(width / 2, height / 2))
-        .force('collision', d3.forceCollide().radius(d => d.size + 5))
-        .force('x', d3.forceX(width / 2).strength(0.05))
-        .force('y', d3.forceY(height / 2).strength(0.05));
+        .force('collision', d3.forceCollide().radius(d => d.size + 3))
+        .force('x', d3.forceX(width / 2).strength(0.1))
+        .force('y', d3.forceY(height / 2).strength(0.1));
     
     // Draw links
     const link = g.append('g')
