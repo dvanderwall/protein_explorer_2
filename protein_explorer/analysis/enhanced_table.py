@@ -8,6 +8,9 @@ from protein_explorer.analysis.phospho_analyzer_2 import get_phosphosite_data
 # Modify enhance_phosphosite_table in protein_explorer/analysis/enhanced_table.py
 # to handle NaN values properly
 
+# In protein_explorer/analysis/enhanced_table.py
+# Only the relevant changes to add the kinase column
+
 def enhance_phosphosite_table(phosphosites, protein_uniprot_id):
     """
     Add data attributes to the phosphosite table HTML for better visualization.
@@ -44,23 +47,23 @@ def enhance_phosphosite_table(phosphosites, protein_uniprot_id):
             
             if 'hydrophobicityScore' not in site:
                 site['hydrophobicityScore'] = calculate_hydrophobicity_score(site['motif'])
-            
-        # For B-factor gradient, use a random value if not available
-        if 'bFactorGradient' not in site:
-            import random
-            site['bFactorGradient'] = random.uniform(5, 30)
-            
-        # Ensure surface accessibility is calculated for all sites
-        if 'surfaceAccessibility' not in site and 'surface_accessibility' not in site:
-            # If we can compute from nearby_count, do that
-            if 'nearby_count' in site:
-                max_neighbors = 30  # Approximate maximum reasonable number of neighbors in 8Å
-                nearby_count = site.get('nearby_count', 0)
-                surface_accessibility = max(0, min(100, (max_neighbors - nearby_count) / max_neighbors * 100))
-                site['surfaceAccessibility'] = surface_accessibility
-            else:
-                # Default value if we can't calculate
-                site['surfaceAccessibility'] = 50.0  # Middle value as default
+
+        # Extract known kinase information
+        known_kinase = None
+        for i in range(1, 6):
+            kinase_field = f"KINASE_{i}"
+            if kinase_field in site and site[kinase_field] and site[kinase_field] != 'unlabeled':
+                known_kinase = site[kinase_field]
+                break
+                
+        # Check other possible kinase field names
+        if not known_kinase:
+            for field in ['known_kinase', 'knownKinase']:
+                if field in site and site[field] and site[field] != 'unlabeled':
+                    known_kinase = site[field]
+                    break
+                    
+        site['known_kinase'] = known_kinase or ''
     
     # Generate the HTML
     html = """
@@ -91,6 +94,7 @@ def enhance_phosphosite_table(phosphosites, protein_uniprot_id):
                             <th>Nearby Residues (10Å)</th>
                             <th>Surface Access.</th>
                             <th>Known</th>
+                            <th>Kinase</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -164,33 +168,10 @@ def enhance_phosphosite_table(phosphosites, protein_uniprot_id):
             site_plddt = mean_plddt  # Use mean pLDDT as fallback
             site_plddt_text = f"{site_plddt:.1f}"
         
-        # Get additional metrics - handle string values properly
-        try:
-            acidic_percentage = float(site.get('acidicPercentage', 0))
-        except (ValueError, TypeError):
-            acidic_percentage = 0
-            
-        try:
-            basic_percentage = float(site.get('basicPercentage', 0))
-        except (ValueError, TypeError):
-            basic_percentage = 0
-            
-        try:
-            aromatic_percentage = float(site.get('aromaticPercentage', 0))
-        except (ValueError, TypeError):
-            aromatic_percentage = 0
-            
-        try:
-            b_factor_gradient = float(site.get('bFactorGradient', 0))
-        except (ValueError, TypeError):
-            b_factor_gradient = 0
-            
-        try:
-            hydrophobicity_score = float(site.get('hydrophobicityScore', 0))
-        except (ValueError, TypeError):
-            hydrophobicity_score = 0
+        # Get the kinase info for display
+        known_kinase = site.get('known_kinase', '')
         
-        # NEW: Determine if the site has complete structural analysis
+        # Determine if the site has complete structural analysis
         site_id = f"{protein_uniprot_id}_{resno}"
         from protein_explorer.analysis.phospho_analyzer_2 import get_phosphosite_data
         supp_data = get_phosphosite_data(site_id)
@@ -201,7 +182,7 @@ def enhance_phosphosite_table(phosphosites, protein_uniprot_id):
             # Site not analyzed: color orange
             row_style = 'style="background-color: #ffcc80;"'
 
-        # Continue building the data attributes string
+        # Add all data attributes including kinase information
         data_attrs = f"""
             data-site="{site.get('site', '')}"
             data-resno="{resno}"
@@ -209,15 +190,17 @@ def enhance_phosphosite_table(phosphosites, protein_uniprot_id):
             data-nearby="{nearby_count}"
             data-plddt="{mean_plddt}"
             data-surface="{surface_accessibility}"
-            data-acidic="{acidic_percentage}"
-            data-basic="{basic_percentage}"
-            data-aromatic="{aromatic_percentage}"
-            data-bfactor="{b_factor_gradient}"
-            data-hydrophobicity="{hydrophobicity_score}"
+            data-acidic="{site.get('acidicPercentage', 0)}"
+            data-basic="{site.get('basicPercentage', 0)}"
+            data-aromatic="{site.get('aromaticPercentage', 0)}"
+            data-bfactor="{site.get('bFactorGradient', 0)}"
+            data-hydrophobicity="{site.get('hydrophobicityScore', 0)}"
             data-known="{is_known}"
+            data-kinase="{known_kinase}"
+            data-site-id="{site_id}"
         """
 
-        # And include the row_style in the <tr> tag:
+        # Include the Kinase column in the row rendering
         html += f"""
         <tr {row_style} {data_attrs}>
             <td><a href="/site/{protein_uniprot_id}/{site.get('site', '')}" class="site-link" data-resno="{resno}"><strong id="site-{resno}">{site.get('site', '')}</strong></a></td>
@@ -227,6 +210,7 @@ def enhance_phosphosite_table(phosphosites, protein_uniprot_id):
             <td>{nearby_count}</td>
             <td>{surface_access_text}</td>
             <td>{"Yes" if is_known else "No"}</td>
+            <td class="kinase-col">{known_kinase if known_kinase else "—"}</td>
             <td>
                 <a href="/site/{protein_uniprot_id}/{site.get('site', '')}" class="btn btn-sm btn-outline-primary">
                     Details
@@ -241,7 +225,10 @@ def enhance_phosphosite_table(phosphosites, protein_uniprot_id):
             </div>
         </div>
     </div>
+    """
     
+    # Rest of the function remains the same...
+    html += """
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             // Add click handlers to site links

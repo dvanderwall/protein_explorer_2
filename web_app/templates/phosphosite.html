@@ -478,5 +478,13 @@
     
     <!-- Main Visualization Script -->
     <script src="{{ url_for('static', filename='js/phosphosite-visualization.js') }}"></script>
+
+    <!-- Add the new structural network visualization script -->
+    <script src="{{ url_for('static', filename='js/protein-structural-network-visualization.js') }}"></script>
+
+    <!-- Debugging Script for Structural Network -->
+    <script>
+    console.log('Structural network script status:', typeof setupPhosphositeStructuralNetwork !== 'undefined' ? 'Loaded' : 'Not loaded');
+    </script>
 </body>
 </html>

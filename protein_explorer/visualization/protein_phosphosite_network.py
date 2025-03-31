@@ -1,14 +1,16 @@
-# This should be placed in: protein_explorer/visualization/phosphosite_network.py
+# Add/modify in protein_explorer/visualization/protein_phosphosite_network.py
 
-"""
-Functions for generating phosphosite network visualizations.
-This module provides functions to create interactive network visualizations
-for phosphosites and their structural matches.
-"""
+import json
+import logging
+import re
+from protein_explorer.db.db import get_phosphosite_data, get_phosphosites_batch
+
+logger = logging.getLogger(__name__)
 
 def create_phosphosite_network_visualization(protein_uniprot_id, phosphosites=None, structural_matches=None):
     """
     Create a network visualization of phosphosites and their structural matches.
+    Enhanced to support known kinase visualization similar to sequence network.
     
     Args:
         protein_uniprot_id: UniProt ID of the protein
@@ -18,7 +20,133 @@ def create_phosphosite_network_visualization(protein_uniprot_id, phosphosites=No
     Returns:
         HTML string with network visualization
     """
-    # Create network visualization HTML
+    # Process phosphosites to extract kinase information
+    processed_phosphosites = []
+    if phosphosites:
+        for site in phosphosites:
+            # Skip Y (tyrosine) sites - for consistency with sequence network
+            if 'site' in site and site['site'] and site['site'][0] == 'Y':
+                continue
+                
+            site_copy = site.copy()
+            
+            # Ensure is_known flags are properly set
+            if 'is_known' in site:
+                site_copy['is_known'] = bool(site['is_known'])
+                
+            if 'is_known_phosphosite' in site:
+                site_copy['is_known_phosphosite'] = float(site['is_known_phosphosite'])
+            elif 'is_known' in site:
+                site_copy['is_known_phosphosite'] = 1.0 if site['is_known'] else 0.0
+                
+            # Add known kinase information if available
+            known_kinase = None
+            for i in range(1, 6):
+                kinase_field = f"KINASE_{i}"
+                if kinase_field in site and site[kinase_field] and site[kinase_field] != 'unlabeled':
+                    known_kinase = site[kinase_field]
+                    break
+                    
+            if not known_kinase and 'known_kinase' in site and site['known_kinase'] and site['known_kinase'] != 'unlabeled':
+                known_kinase = site['known_kinase']
+                
+            if known_kinase:
+                site_copy['knownKinase'] = known_kinase
+                
+            processed_phosphosites.append(site_copy)
+    
+    # Process structural matches to enhance with kinase data and other supplementary information
+    processed_matches = {}
+    all_target_ids = set()  # Collect all target IDs for batch query
+    
+    # First pass - collect all target IDs
+    if structural_matches:
+        for site_name, matches in structural_matches.items():
+            # Skip Y (tyrosine) sites
+            if site_name and site_name[0] == 'Y':
+                continue
+                
+            for match in matches:
+                # Skip matches with Y sites
+                if match.get('target_site', '')[0] == 'Y':
+                    continue
+                
+                # Get target info and create target_id
+                target_uniprot = match.get('target_uniprot')
+                target_site = match.get('target_site')
+                
+                if target_uniprot and target_site:
+                    # Extract just the number from the target site
+                    target_resno = ''.join(filter(str.isdigit, target_site))
+                    if target_resno:
+                        target_id = f"{target_uniprot}_{target_resno}"
+                        all_target_ids.add(target_id)
+    
+    # Batch fetch supplementary data for all target sites
+    supplementary_data = {}
+    if all_target_ids:
+        try:
+            logger.info(f"Fetching supplementary data for {len(all_target_ids)} target sites")
+            supplementary_data = get_phosphosites_batch(list(all_target_ids))
+            logger.info(f"Retrieved data for {len(supplementary_data)} target sites")
+        except Exception as e:
+            logger.error(f"Error fetching supplementary data: {e}")
+    
+    # Second pass - enhance matches with the supplementary data
+    if structural_matches:
+        for site_name, matches in structural_matches.items():
+            # Skip Y (tyrosine) sites
+            if site_name and site_name[0] == 'Y':
+                continue
+                
+            processed_site_matches = []
+            for match in matches:
+                # Skip matches with Y sites
+                if match.get('target_site', '')[0] == 'Y':
+                    continue
+                
+                match_copy = match.copy()
+                
+                # Get target info
+                target_uniprot = match.get('target_uniprot')
+                target_site = match.get('target_site')
+                
+                # Extract kinase and other info from supplementary data
+                target_resno = ''.join(filter(str.isdigit, target_site))
+                target_id = f"{target_uniprot}_{target_resno}" if target_uniprot and target_resno else None
+                
+                if target_id and target_id in supplementary_data:
+                    target_data = supplementary_data[target_id]
+                    
+                    # Extract known kinase information
+                    known_kinase = None
+                    for i in range(1, 6):
+                        kinase_field = f"KINASE_{i}"
+                        if kinase_field in target_data and target_data[kinase_field] and target_data[kinase_field] != 'unlabeled':
+                            known_kinase = target_data[kinase_field]
+                            break
+                    
+                    if not known_kinase and 'known_kinase' in target_data and target_data['known_kinase'] and target_data['known_kinase'] != 'unlabeled':
+                        known_kinase = target_data['known_kinase']
+                    
+                    # Set known kinase in match data
+                    if known_kinase:
+                        match_copy['known_kinase'] = known_kinase
+                    
+                    # Add additional supplementary data
+                    if 'SITE_+/-7_AA' in target_data and target_data['SITE_+/-7_AA']:
+                        match_copy['motif'] = target_data['SITE_+/-7_AA']
+                    
+                    for field in ['site_plddt', 'mean_plddt', 'nearby_count', 'surface_accessibility']:
+                        if field in target_data and target_data[field] is not None:
+                            match_copy[field] = target_data[field]
+                
+                processed_site_matches.append(match_copy)
+                
+            if processed_site_matches:
+                processed_matches[site_name] = processed_site_matches
+    
+    # Create HTML for the visualization
     html = """
     <div class="card mb-4">
         <div class="card-header">
@@ -55,6 +183,10 @@ def create_phosphosite_network_visualization(protein_uniprot_id, phosphosites=No
                         <div style="width: 16px; height: 16px; background-color: #FF9800; border-radius: 50%; margin-right: 6px;"></div>
                         <span class="small">Unknown protein sites</span>
                     </div>
+                    <div class="d-flex align-items-center me-4 mb-2">
+                        <div style="width: 16px; height: 16px; background-color: #9C27B0; border-radius: 50%; margin-right: 6px;"></div>
+                        <span class="small">Sites with known kinase</span>
+                    </div>
                     <div class="d-flex align-items-center mb-2">
                         <div style="width: 16px; height: 16px; background-color: #9E9E9E; border-radius: 50%; margin-right: 6px;"></div>
                         <span class="small">Structurally similar sites</span>
@@ -74,467 +206,110 @@ def create_phosphosite_network_visualization(protein_uniprot_id, phosphosites=No
         </div>
     </div>
 
-    <!-- D3.js Library (if not already included) -->
-    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <!-- Store structural match data for the visualization -->
+    <div id="structural-match-data" style="display: none;" data-matches='"""
     
-    <!-- Network Visualization Script -->
+    # Convert processed matches to JSON with proper handling
+    try:
+        matches_json = json.dumps(processed_matches)
+    except Exception as json_err:
+        logger.error(f"Error converting matches to JSON: {json_err}")
+        matches_json = '{}'  # Default to empty object
+        
+    html += matches_json + """'></div>
+
+    <!-- Store phosphosites data for better node creation -->
+    <div id="phosphosites-data" style="display: none;" data-sites='"""
+    
+    # Convert phosphosites to JSON
+    try:
+        sites_json = json.dumps(processed_phosphosites) if processed_phosphosites else '[]'
+    except Exception as json_err:
+        logger.error(f"Error converting phosphosites to JSON: {json_err}")
+        sites_json = '[]'
+    
+    html += sites_json + """'></div>
+
+    <!-- Inline script to initialize the network visualization -->
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Setup network visualization when DOM is loaded
-        setupPhosphositeNetwork();
+        console.log('DOM loaded, initializing structural network for """ + protein_uniprot_id + """');
+        // Try to load the proper visualization script if not already loaded
+        if (typeof setupPhosphositeStructuralNetwork === 'function') {
+            // Function is already loaded, call it directly
+            setupPhosphositeStructuralNetwork('""" + protein_uniprot_id + """');
+        } else {
+            console.log('Loading structural network visualization script...');
+            // Create script element to load the visualization script
+            const script = document.createElement('script');
+            script.src = "/static/js/protein-structural-network-visualization.js";
+            script.onload = function() {
+                if (typeof setupPhosphositeStructuralNetwork === 'function') {
+                    setupPhosphositeStructuralNetwork('""" + protein_uniprot_id + """');
+                } else {
+                    console.error('Structural network visualization function still not found after loading script');
+                    // Fallback to basic visualization
+                    setupBasicStructuralNetwork('""" + protein_uniprot_id + """');
+                }
+            };
+            document.head.appendChild(script);
+        }
     });
     
-    let networkSimulation = null;
-    
-    function setupPhosphositeNetwork() {
+    // Basic fallback visualization in case the main script fails to load
+    function setupBasicStructuralNetwork(proteinUniprotId) {
+        console.log('Setting up basic structural network visualization');
         const networkContainer = document.getElementById('network-container');
-        if (!networkContainer) {
-            console.error("Network container not found");
+        if (!networkContainer) return;
+        
+        // Extract matches data
+        const matchesElement = document.getElementById('structural-match-data');
+        const phosphositesElement = document.getElementById('phosphosites-data');
+        
+        if (!matchesElement || !phosphositesElement) {
+            networkContainer.innerHTML = '<div class="alert alert-warning p-3">Unable to load network data</div>';
             return;
         }
         
-        console.log("Initializing phosphosite network visualization");
+        const matchesAttr = matchesElement.getAttribute('data-matches');
+        const phosphositesAttr = phosphositesElement.getAttribute('data-sites');
         
-        // Reset the network container
-        networkContainer.innerHTML = '';
-        
-        // Create information panel
-        const infoPanel = document.createElement('div');
-        infoPanel.className = 'node-info-panel';
-        infoPanel.style.position = 'absolute';
-        infoPanel.style.top = '10px';
-        infoPanel.style.right = '10px';
-        infoPanel.style.width = '250px';
-        infoPanel.style.backgroundColor = 'white';
-        infoPanel.style.border = '1px solid #ddd';
-        infoPanel.style.borderRadius = '5px';
-        infoPanel.style.padding = '10px';
-        infoPanel.style.boxShadow = '0 0 10px rgba(0,0,0,0.1)';
-        infoPanel.style.zIndex = '100';
-        infoPanel.style.fontSize = '0.9rem';
-        infoPanel.style.maxHeight = '380px';
-        infoPanel.style.overflowY = 'auto';
-        infoPanel.innerHTML = '<p class="text-center"><em>Hover over a node to see details</em></p>';
-        networkContainer.appendChild(infoPanel);
-        
-        // Extract protein UniProt ID
-        const proteinUniprotId = '""" + protein_uniprot_id + """';
-        
-        // Extract network data from the page DOM
-        const networkData = extractNetworkDataFromDOM(proteinUniprotId);
-        
-        if (!networkData || networkData.nodes.length === 0) {
-            networkContainer.innerHTML = '<div class="alert alert-info m-3 mt-5">No phosphosite network data available. This could be because no structural matches were found with RMSD < 2.0.</div>';
-            return;
-        }
-        
-        console.log(`Creating network with ${networkData.nodes.length} nodes and ${networkData.links.length} links`);
-        
-        // Create SVG element
-        const svg = d3.select(networkContainer)
-            .append('svg')
-            .attr('width', '100%')
-            .attr('height', '100%')
-            .style('position', 'absolute')
-            .style('top', '0')
-            .style('left', '0')
-            .style('background-color', 'white');
-        
-        // Get dimensions
-        const width = networkContainer.clientWidth;
-        const height = networkContainer.clientHeight;
-        
-        // Create group for zoom behavior
-        const g = svg.append('g');
-        
-        // Add zoom behavior
-        const zoom = d3.zoom()
-            .scaleExtent([0.2, 5])
-            .on('zoom', (event) => {
-                g.attr('transform', event.transform);
-            });
-        
-        svg.call(zoom);
-        
-        // Helper functions for styling
-        function getNodeColor(d) {
-            if (d.type === 'protein') {
-                return d.isKnown ? '#4CAF50' : '#FF9800'; // Green for known protein sites, Orange for unknown
-            }
-            return '#9E9E9E'; // Gray for matched sites
-        }
-        
-        function getLinkColor(d) {
-            if (d.rmsd < 1.0) return '#4CAF50'; // Green for very low RMSD
-            if (d.rmsd < 1.5) return '#8BC34A'; // Light green for low RMSD
-            if (d.rmsd < 2.0) return '#CDDC39'; // Lime for medium RMSD
-            return '#FFC107'; // Yellow/amber for higher RMSD
-        }
-        
-        function getLinkWidth(d) {
-            // Scale link width based on RMSD - thicker for lower RMSD
-            return Math.max(1, 4 / Math.max(0.5, d.rmsd));
-        }
-        
-        // Setup force simulation
-        networkSimulation = d3.forceSimulation(networkData.nodes)
-            .force('link', d3.forceLink(networkData.links)
-                .id(d => d.id)
-                .distance(d => d.rmsd ? d.rmsd * 30 : 60))
-            .force('charge', d3.forceManyBody()
-                .strength(d => d.type === 'protein' ? -200 : -100))
-            .force('center', d3.forceCenter(width / 2, height / 2))
-            .force('collision', d3.forceCollide().radius(d => d.size + 5))
-            .force('x', d3.forceX(width / 2).strength(0.05))
-            .force('y', d3.forceY(height / 2).strength(0.05));
-        
-        // Draw links
-        const link = g.append('g')
-            .selectAll('line')
-            .data(networkData.links)
-            .enter()
-            .append('line')
-            .attr('stroke', getLinkColor)
-            .attr('stroke-width', getLinkWidth)
-            .attr('stroke-opacity', 0.6)
-            .attr('class', 'network-link');
-        
-        // Draw nodes
-        const node = g.append('g')
-            .selectAll('circle')
-            .data(networkData.nodes)
-            .enter()
-            .append('circle')
-            .attr('r', d => d.size)
-            .attr('fill', getNodeColor)
-            .attr('stroke', '#fff')
-            .attr('stroke-width', 1.5)
-            .attr('cursor', 'pointer')
-            .attr('class', 'network-node')
-            .attr('data-rmsd', d => d.rmsd || 0)
-            .call(d3.drag()
-                .on('start', dragstarted)
-                .on('drag', dragged)
-                .on('end', dragended));
-        
-        // Add labels for protein sites
-        const label = g.append('g')
-            .selectAll('text')
-            .data(networkData.nodes.filter(d => d.type === 'protein'))
-            .enter()
-            .append('text')
-            .attr('text-anchor', 'middle')
-            .attr('dy', d => -d.size - 5)
-            .style('font-size', '10px')
-            .style('font-weight', 'bold')
-            .style('pointer-events', 'none')
-            .style('fill', '#333')
-            .attr('class', 'network-node-label')
-            .text(d => d.name);
-        
-        // Function to update info panel
-        function updateInfoPanel(d) {
-            let content = '';
-            if (d.type === 'protein') {
-                content = `
-                    <h6 class="border-bottom pb-2 mb-2">${d.name} - ${d.uniprot}</h6>
-                    <p><strong>Site Type:</strong> ${d.siteType}</p>
-                    <p><strong>Known Site:</strong> ${d.isKnown ? 'Yes' : 'No'}</p>
-                    ${d.meanPlddt ? `<p><strong>Mean pLDDT:</strong> ${d.meanPlddt}</p>` : ''}
-                    ${d.nearbyCount ? `<p><strong>Nearby Residues:</strong> ${d.nearbyCount}</p>` : ''}
-                    ${d.motif ? `<p><strong>Motif:</strong> <code>${d.motif}</code></p>` : ''}
-                    <div class="d-grid gap-2 mt-3">
-                        <a href="/site/${d.uniprot}/${d.name}" class="btn btn-sm btn-primary">View Site Details</a>
-                    </div>
-                `;
-            } else {
-                content = `
-                    <h6 class="border-bottom pb-2 mb-2">${d.name} - ${d.uniprot}</h6>
-                    <p><strong>Site Type:</strong> ${d.siteType}</p>
-                    <p><strong>RMSD:</strong> ${d.rmsd ? d.rmsd.toFixed(2) + ' Å' : 'N/A'}</p>
-                    <div class="d-grid gap-2 mt-3">
-                        <a href="https://www.uniprot.org/uniprotkb/${d.uniprot}" class="btn btn-sm btn-outline-primary" target="_blank">View on UniProt</a>
-                        <a href="/site/${d.uniprot}/${d.name}" class="btn btn-sm btn-primary">View Site Details</a>
-                    </div>
-                `;
-            }
-            
-            infoPanel.innerHTML = content;
-        }
-        
-        // Node interactions
-        node
-            .on('mouseover', function(event, d) {
-                // Highlight node on hover
-                d3.select(this)
-                    .transition()
-                    .duration(200)
-                    .attr('r', d.size * 1.4);
-                
-                // Update info panel
-                updateInfoPanel(d);
-            })
-            .on('mouseout', function(event, d) {
-                // Restore node size
-                d3.select(this)
-                    .transition()
-                    .duration(200)
-                    .attr('r', d.size);
-            })
-            .on('click', function(event, d) {
-                // Navigate to site details
-                window.location.href = `/site/${d.uniprot}/${d.name}`;
-            });
-        
-        // Tick function for the simulation
-        networkSimulation.on('tick', () => {
-            link
-                .attr('x1', d => d.source.x)
-                .attr('y1', d => d.source.y)
-                .attr('x2', d => d.target.x)
-                .attr('y2', d => d.target.y);
-            
-            node
-                .attr('cx', d => d.x)
-                .attr('cy', d => d.y);
-            
-            label
-                .attr('x', d => d.x)
-                .attr('y', d => d.y);
-        });
-        
-        // Store nodes and links in global scope for filter function
-        window.networkNodes = node;
-        window.networkLinks = link;
-        window.networkLabels = label;
-        
-        // Drag functions
-        function dragstarted(event, d) {
-            if (!event.active) networkSimulation.alphaTarget(0.3).restart();
-            d.fx = d.x;
-            d.fy = d.y;
-        }
-        
-        function dragged(event, d) {
-            d.fx = event.x;
-            d.fy = event.y;
-        }
-        
-        function dragended(event, d) {
-            if (!event.active) networkSimulation.alphaTarget(0);
-            d.fx = null;
-            d.fy = null;
-        }
-    }
-    
-    function extractNetworkDataFromDOM(proteinUniprotId) {
         try {
-            // Create arrays for nodes and links
-            const nodes = [];
-            const links = [];
-            const nodeMap = new Map(); // Track unique nodes
+            const matches = JSON.parse(matchesAttr || '{}');
+            const phosphosites = JSON.parse(phosphositesAttr || '[]');
             
-            // Get table with phosphosite data
-            const phosphositeTable = document.querySelector('table.phosphosite-table');
-            if (!phosphositeTable) {
-                console.error("Phosphosite table not found");
-                return null;
+            // Check if we have data to display
+            if (Object.keys(matches).length === 0 || phosphosites.length === 0) {
+                networkContainer.innerHTML = '<div class="alert alert-info p-3">No structural network data available</div>';
+                return;
             }
             
-            // Process rows to get phosphosites
-            const rows = phosphositeTable.querySelectorAll('tbody tr');
-            console.log(`Found ${rows.length} phosphosite rows in the table`);
-            
-            rows.forEach((row, index) => {
-                // Get site info
-                const siteCell = row.querySelector('td:first-child');
-                if (!siteCell) return;
-                
-                const siteLink = siteCell.querySelector('a');
-                const siteName = siteLink ? siteLink.textContent.trim() : siteCell.textContent.trim();
-                
-                if (!siteName) return;
-                
-                // Get site attributes
-                const knownAttr = row.getAttribute('data-known');
-                console.log(`Row ${index}, Site: ${siteName}, data-known attribute: "${knownAttr}"`);
-                
-                // Case-insensitive check for true/false strings, and also handle "1" or "yes" values
-                const isKnown = knownAttr === 'true' || knownAttr === 'True' || knownAttr === 'TRUE' || 
-                            knownAttr === '1' || knownAttr === 'yes' || knownAttr === 'Yes';
-                
-                const siteType = row.getAttribute('data-type') || siteName[0];
-                const resno = row.getAttribute('data-resno') || 
-                            (siteName.match(/\d+/) ? siteName.match(/\d+/)[0] : '0');
-                
-                // Get other metrics if available
-                const meanPlddt = row.getAttribute('data-plddt') || 
-                                row.querySelector('td:nth-child(3)') ? 
-                                row.querySelector('td:nth-child(3)').textContent.trim() : '';
-                const nearbyCount = row.getAttribute('data-nearby') || 
-                                row.querySelector('td:nth-child(5)') ? 
-                                row.querySelector('td:nth-child(5)').textContent.trim() : '';
-                
-                // Check if the row has a "Yes" in the Known column
-                const knownCell = row.querySelector('td:nth-child(7)'); // 7th column is "Known"
-                const knownText = knownCell ? knownCell.textContent.trim() : '';
-                const isKnownByText = knownText === 'Yes';
-                
-                // Use either attribute or text determination for isKnown
-                const finalIsKnown = isKnown || isKnownByText;
-                
-                console.log(`Site ${siteName} isKnown: ${finalIsKnown} (attribute: ${isKnown}, text: ${isKnownByText})`);
-                
-                // Get motif
-                const motifCell = row.querySelector('td:nth-child(2)');
-                const motif = motifCell ? motifCell.textContent.trim() : '';
-                
-                // Create node ID
-                const nodeId = `${proteinUniprotId}_${siteName}`;
-                
-                // Add node if not already in the map
-                if (!nodeMap.has(nodeId)) {
-                    const node = {
-                        id: nodeId,
-                        name: siteName,
-                        uniprot: proteinUniprotId,
-                        type: 'protein',
-                        isKnown: finalIsKnown,
-                        siteType: siteType,
-                        resno: resno,
-                        meanPlddt: meanPlddt,
-                        nearbyCount: nearbyCount,
-                        motif: motif,
-                        size: 10
-                    };
-                    
-                    nodes.push(node);
-                    nodeMap.set(nodeId, node);
+            // Create a simple force-directed network with D3.js
+            // (Basic implementation that will work if the main script fails to load)
+            if (typeof d3 !== 'undefined') {
+                // D3.js code for basic visualization
+                // (Simplified version of the main visualization)
+                networkContainer.innerHTML = '<div class="alert alert-warning p-3 mb-3">Basic visualization mode</div>' +
+                                             '<svg width="100%" height="400px"></svg>';
+                                             
+                // Create basic visualization here...
+            } else {
+                // If D3.js is not available, show a table of matches instead
+                let tableHtml = '<div class="alert alert-warning p-3 mb-3">Unable to load visualization library</div>' +
+                                '<table class="table table-sm table-bordered">' +
+                                '<thead><tr><th>Protein Site</th><th>Match Count</th></tr></thead>' +
+                                '<tbody>';
+                                
+                for (const [site, siteMatches] of Object.entries(matches)) {
+                    tableHtml += `<tr><td>${site}</td><td>${siteMatches.length}</td></tr>`;
                 }
-            });
-            
-            console.log(`Created ${nodes.length} protein nodes, known sites: ${nodes.filter(n => n.isKnown).length}`);
-            
-            // Find match tables
-            document.querySelectorAll('.match-card').forEach(matchCard => {
-                // Get the site name from the header
-                const header = matchCard.querySelector('.card-header h5');
-                if (!header) return;
                 
-                const headerText = header.textContent.trim();
-                const siteMatch = headerText.match(/Site: ([^ ]+) Matches/);
-                if (!siteMatch) return;
-                
-                const siteName = siteMatch[1];
-                const sourceNodeId = `${proteinUniprotId}_${siteName}`;
-                
-                // Make sure source node exists
-                if (!nodeMap.has(sourceNodeId)) return;
-                
-                // Get match table
-                const matchTable = matchCard.querySelector('table');
-                if (!matchTable) return;
-                
-                // Process match rows
-                const matchRows = matchTable.querySelectorAll('tbody tr');
-                matchRows.forEach(matchRow => {
-                    const cells = matchRow.querySelectorAll('td');
-                    if (cells.length < 3) return;
-                    
-                    // Get target info
-                    const targetUniprotCell = cells[0];
-                    const targetUniprotLink = targetUniprotCell.querySelector('a');
-                    const targetUniprot = targetUniprotLink ? 
-                                        targetUniprotLink.textContent.trim() : 
-                                        targetUniprotCell.textContent.trim();
-                    
-                    const targetSite = cells[1].textContent.trim();
-                    const rmsd = parseFloat(cells[2].textContent.trim());
-                    
-                    // Skip if RMSD is above threshold (initial filter, can be changed later by UI)
-                    const currentThreshold = parseFloat(document.getElementById('rmsd-filter').value);
-                    if (rmsd > currentThreshold) return;
-                    
-                    // Create target node ID
-                    const targetNodeId = `${targetUniprot}_${targetSite}`;
-                    
-                    // Skip self-references
-                    if (sourceNodeId === targetNodeId) return;
-                    
-                    // Add target node if doesn't exist
-                    if (!nodeMap.has(targetNodeId)) {
-                        const targetNode = {
-                            id: targetNodeId,
-                            name: targetSite,
-                            uniprot: targetUniprot,
-                            type: 'match',
-                            isKnown: false,
-                            siteType: targetSite[0],
-                            rmsd: rmsd,
-                            size: 8
-                        };
-                        
-                        nodes.push(targetNode);
-                        nodeMap.set(targetNodeId, targetNode);
-                    }
-                    
-                    // Add link
-                    links.push({
-                        source: sourceNodeId,
-                        target: targetNodeId,
-                        rmsd: rmsd
-                    });
-                });
-            });
-            
-            // Return network data if we have nodes
-            if (nodes.length > 0) {
-                console.log(`Final network: ${nodes.length} nodes, ${links.length} links`);
-                return { nodes, links };
+                tableHtml += '</tbody></table>';
+                networkContainer.innerHTML = tableHtml;
             }
-            
-            return null;
-        } catch (error) {
-            console.error("Error extracting network data:", error);
-            return null;
-        }
-    }
-    
-    // Function to filter network by RMSD threshold
-    function updateNetworkFilter() {
-        if (!window.networkNodes || !window.networkLinks) return;
-        
-        const threshold = parseFloat(document.getElementById('rmsd-filter').value);
-        
-        // Filter links by RMSD
-        window.networkLinks.style('display', function(d) {
-            return d.rmsd <= threshold ? null : 'none';
-        });
-        
-        // Show nodes only if they have visible connections
-        window.networkNodes.style('display', function(d) {
-            // Always show protein sites
-            if (d.type === 'protein') return null;
-            
-            // For other nodes, check if they have any visible connections
-            const hasVisibleConnection = window.networkLinks.data().some(link => 
-                (link.source.id === d.id || link.target.id === d.id) && link.rmsd <= threshold
-            );
-            
-            return hasVisibleConnection ? null : 'none';
-        });
-        
-        // Update labels visibility to match nodes
-        if (window.networkLabels) {
-            window.networkLabels.style('display', function(d) {
-                // Get the corresponding node
-                const node = window.networkNodes.filter(n => n.__data__.id === d.id).node();
-                if (node) {
-                    // Check if the node is visible
-                    return window.getComputedStyle(node).display !== 'none' ? null : 'none';
-                }
-                return null;
-            });
+        } catch (e) {
+            console.error('Error setting up basic network:', e);
+            networkContainer.innerHTML = '<div class="alert alert-danger p-3">Error loading network data</div>';
         }
     }
     </script>

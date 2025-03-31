@@ -729,6 +729,74 @@ def phosphosite_analysis():
                                 structural_matches[site['site']] = enhanced_matches
                     
                     results['structural_matches'] = structural_matches
+
+
+                    # Updates to add to app_2.py in the phosphosite_analysis function
+                    # This should go in the block that processes structural matches
+                    # After structural_matches is populated, implement additional processing to enhance matches with kinase data
+                    if structural_matches:
+                        # Get all target site IDs for batch query
+                        target_ids = []
+                        for site_matches in structural_matches.values():
+                            for match in site_matches:
+                                target_uniprot = match.get('target_uniprot')
+                                target_site = match.get('target_site')
+                                
+                                # Extract number from the target site
+                                if target_uniprot and target_site:
+                                    target_resno = ''.join(filter(str.isdigit, target_site))
+                                    if target_resno:
+                                        target_id = f"{target_uniprot}_{target_resno}"
+                                        target_ids.append(target_id)
+                        
+                        # Batch retrieve supplementary data for target sites
+                        if target_ids:
+                            try:
+                                target_supp_data = get_phosphosites_batch(target_ids)
+                                
+                                # Enhance matches with supplementary data
+                                for site_name, site_matches in structural_matches.items():
+                                    for i, match in enumerate(site_matches):
+                                        target_uniprot = match.get('target_uniprot')
+                                        target_site = match.get('target_site')
+                                        
+                                        # Skip if missing target info
+                                        if not target_uniprot or not target_site:
+                                            continue
+                                        
+                                        # Extract number from the target site
+                                        target_resno = ''.join(filter(str.isdigit, target_site))
+                                        if not target_resno:
+                                            continue
+                                        
+                                        # Create target ID
+                                        target_id = f"{target_uniprot}_{target_resno}"
+                                        
+                                        # Check if we have supplementary data
+                                        if target_id in target_supp_data:
+                                            supp_data = target_supp_data[target_id]
+                                            
+                                            # Extract kinase information
+                                            known_kinase = None
+                                            for j in range(1, 6):
+                                                kinase_field = f"KINASE_{j}"
+                                                if kinase_field in supp_data and supp_data[kinase_field] and supp_data[kinase_field] != 'unlabeled':
+                                                    known_kinase = supp_data[kinase_field]
+                                                    break
+                                            
+                                            # Add known kinase to match data
+                                            if known_kinase:
+                                                match['target_known_kinase'] = known_kinase
+                                            
+                                            # Add other supplementary fields
+                                            if 'SITE_+/-7_AA' in supp_data and supp_data['SITE_+/-7_AA']:
+                                                match['motif'] = supp_data['SITE_+/-7_AA']
+                                            
+                                            for field in ['site_plddt', 'mean_plddt', 'nearby_count', 'surface_accessibility']:
+                                                if field in supp_data and supp_data[field] is not None:
+                                                    match[field] = supp_data[field]
+                            except Exception as e:
+                                logger.error(f"Error enhancing structural matches with supplementary data: {e}")
                 except Exception as e:
                     logger.error(f"Error analyzing structural matches: {e}")
                     results['error'] = f"Error analyzing structural matches: {str(e)}"
