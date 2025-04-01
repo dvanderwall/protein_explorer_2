@@ -118,7 +118,7 @@ def inspect_h5_and_convert(h5_filepath, feather_filepath=None):
     return feather_filepath
 
 # Set your file path
-h5_filepath = "C:/Users/mz30/protein_explorer/phosphosite_similarity_results.h5"
+h5_filepath = "C:/Users/mz30/protein_explorer/phosphosite_similarity_results_jaccard.h5"
 feather_filepath = h5_filepath.replace('.h5', '.feather')
 
 # Run the conversion and inspection

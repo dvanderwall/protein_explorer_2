@@ -818,24 +818,48 @@ def phosphosite_analysis():
                         # Skip empty match lists
                         if not matches:
                             continue
-                            
+                        
+                        print(f"Processing site_id: {site_id} with {len(matches)} matches")
+                        
                         # Get the site name from the site_id
                         site_parts = site_id.split('_')
+                        print("SITE PARTS")
+                        print(site_parts)
                         if len(site_parts) >= 2:
+                            uniprot_id = site_parts[0]
                             site_num = site_parts[1]
                             
-                            # Extract site type if possible (S, T, Y)
-                            site_match = re.match(r'([STY])(\d+)', site_num)
-                            if site_match:
-                                site_type = site_match.group(1)
-                                site_num = site_match.group(2)
-                                site_name = f"{site_type}{site_num}"
-                            else:
-                                site_name = site_num
+                            # Try to find site type from the matches
+                            site_type = None
+                            
+                            # Look for site_type in the matches
+                            for match in matches:
+                                # Check if this is a match with valid site_type
+                                match_site_type = match.get('site_type')
+                                if match_site_type and match_site_type in 'STY':
+                                    site_type = match_site_type
+                                    break
+                            
+                            # If not found in matches, try to find from phosphosites data
+                            if not site_type:
+                                for site in phosphosites:
+                                    if str(site.get('resno')) == str(site_num):
+                                        site_type = site.get('siteType') or site.get('site', 'S')[0]
+                                        break
+                            
+                            # If we still couldn't find the site type, default to 'S'
+                            if not site_type:
+                                site_type = 'S'
                                 
-                            # Add matches to the dictionary if there are any
+                            # Create the site name with the letter prefix
+                            site_name = f"{site_type}{site_num}"
+                            
+                            # Add matches to the dictionary
                             sequence_matches[site_name] = matches
-                    
+                            print(f"Added {len(matches)} matches for site {site_name} from {site_id}")
+                    print("Sequence_Matches")
+                    print(sequence_matches)
+                    results['sequence_matches'] = sequence_matches
                     # Log the result
                     logger.info(f"Processed sequence similarity matches for {len(sequence_matches)} sites")
                     
