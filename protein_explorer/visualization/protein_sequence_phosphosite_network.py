@@ -222,6 +222,10 @@ def create_sequence_network_visualization(protein_uniprot_id, phosphosites=None,
         logger.error(traceback.format_exc())
         processed_matches = {}
     
+    print("PROCESSED MATCHES")
+    print(f"Processed matches: {processed_matches}")
+    print("PROCESSED MATCHES")
+
     # Create network visualization HTML
     html = """
     <div class="card mb-4">

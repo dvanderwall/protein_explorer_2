@@ -209,6 +209,125 @@ def enhance_sequence_matches(matches: List[Dict]) -> List[Dict]:
     logger.info(f"Finished enhancing {len(enhanced_matches)} sequence matches")
     return enhanced_matches
 
+
+
+# First, add this new batch enhancement function to protein_explorer/analysis/sequence_analyzer_2.py
+
+def enhance_sequence_matches_batch(all_matches_dict: Dict[str, List[Dict]]) -> Dict[str, List[Dict]]:
+    """
+    Enhance multiple sets of sequence matches with additional information in a single batch operation.
+    Makes sure site types and motif sequences are consistent.
+    
+    Args:
+        all_matches_dict: Dictionary mapping site IDs to lists of match dictionaries
+        
+    Returns:
+        Dictionary with the same structure but with enhanced match data
+    """
+    logger = logging.getLogger(__name__)
+    
+    # Return empty dict if nothing to process
+    if not all_matches_dict:
+        logger.info("No matches provided to enhance_sequence_matches_batch")
+        return {}
+    
+    # Count total matches to enhance
+    total_matches = sum(len(matches) for matches in all_matches_dict.values())
+    logger.info(f"Batch enhancing {total_matches} sequence matches across {len(all_matches_dict)} sites")
+    
+    # Collect all target IDs from all matches for a single batch query
+    all_target_ids = set()
+    for matches in all_matches_dict.values():
+        for match in matches:
+            if 'target_id' in match and match['target_id']:
+                all_target_ids.add(match['target_id'])
+    
+    logger.info(f"Found {len(all_target_ids)} unique target IDs for batch query")
+    
+    # Batch query for supplementary data
+    supp_data_batch = {}
+    if all_target_ids:
+        try:
+            supp_data_batch = get_phosphosites_batch(list(all_target_ids))
+            logger.info(f"Retrieved supplementary data for {len(supp_data_batch)} sites")
+        except Exception as e:
+            logger.error(f"Error getting phosphosite batch data: {e}")
+    
+    # Process all matches with the batch data
+    enhanced_results = {}
+    
+    for site_id, matches in all_matches_dict.items():
+        enhanced_site_matches = []
+        
+        for match in matches:
+            try:
+                # Create enhanced copy of the match
+                enhanced = match.copy()
+                
+                # Add motif if available
+                target_id = match.get('target_id')
+                
+                # Check if motif is already present and valid
+                if ('motif' not in enhanced or enhanced.get('motif') is None or 
+                        (isinstance(enhanced.get('motif'), str) and not enhanced['motif'].strip())):
+                    # Try to get from the batch query results
+                    if target_id and target_id in supp_data_batch:
+                        site_data = supp_data_batch[target_id]
+                        
+                        if 'SITE_+/-7_AA' in site_data and site_data.get('SITE_+/-7_AA'):
+                            enhanced['motif'] = str(site_data['SITE_+/-7_AA']).upper()
+                        elif 'motif' in site_data and site_data.get('motif'):
+                            enhanced['motif'] = str(site_data['motif']).upper()
+                # Ensure motif is uppercase if present
+                elif enhanced.get('motif') and isinstance(enhanced['motif'], str):
+                    enhanced['motif'] = enhanced['motif'].upper()
+                    
+                # Check for site type in Residue field from supplementary data
+                if target_id and target_id in supp_data_batch:
+                    site_data = supp_data_batch[target_id]
+                    
+                    # Get site type from Residue/residue column if available
+                    if 'Residue' in site_data and site_data.get('Residue') in 'STY':
+                        enhanced['site_type'] = site_data['Residue']
+                    elif 'residue' in site_data and site_data.get('residue') in 'STY':
+                        enhanced['site_type'] = site_data['residue']
+                        
+                    # Add is_known_phosphosite if available
+                    if 'is_known_phosphosite' in site_data:
+                        try:
+                            enhanced['is_known_phosphosite'] = float(site_data['is_known_phosphosite'])
+                        except (ValueError, TypeError):
+                            enhanced['is_known_phosphosite'] = 0.0  # Default to not known
+                    
+                    # Add other useful fields
+                    for field in ['site_plddt', 'mean_plddt', 'nearby_count', 
+                                'surface_accessibility', 'acidic_percentage', 
+                                'basic_percentage', 'aromatic_percentage']:
+                        if field in site_data and site_data[field] is not None:
+                            enhanced[field] = site_data[field]
+                
+                # Ensure target_site exists
+                if 'target_site' not in enhanced or enhanced.get('target_site') is None:
+                    # Extract site number from target_id if possible
+                    if target_id and '_' in target_id:
+                        site_number = target_id.split('_')[1]
+                        enhanced['target_site'] = site_number
+                
+                enhanced_site_matches.append(enhanced)
+                
+            except Exception as e:
+                logger.error(f"Error enhancing match for site {site_id}: {e}")
+                # Add the original match without enhancement rather than skipping it
+                enhanced_site_matches.append(match)
+        
+        # Add the enhanced matches for this site to the results
+        enhanced_results[site_id] = enhanced_site_matches
+    
+    logger.info(f"Finished batch enhancing sequence matches for {len(enhanced_results)} sites")
+    return enhanced_results
+
+
+
 def analyze_motif_conservation(matches: List[Dict], 
                              query_motif: str = None) -> Dict:
     """

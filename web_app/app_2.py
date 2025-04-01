@@ -714,10 +714,7 @@ def phosphosite_analysis():
                 # Try to find structural matches
                 try:
                     # Batch query for structural matches
-                    print("LOOKING FOR STRUCTURAL MATCHES")
                     all_matches = find_structural_matches_batch(site_ids, rmsd_threshold=10.0)
-                    print("ALL STRUCTURAL MATCHES")
-                    print(all_matches)
                     # Organize by site
                     structural_matches = {}
                     for site in phosphosites:
@@ -806,14 +803,18 @@ def phosphosite_analysis():
                 # Try to find sequence similarity matches
                 try:
                     # Direct use of batch query without additional complexity
-                    sequence_matches_batch = find_sequence_matches_batch(site_ids, min_similarity=0.4)
+                    sequence_matches_batch = find_sequence_matches_batch(site_ids, min_similarity=0.3)
                     
-                    # Import the sequence matches enhancement function
-                    from protein_explorer.analysis.sequence_analyzer_2 import enhance_sequence_matches
+                    # Import the new batch enhancement function
+                    from protein_explorer.analysis.sequence_analyzer_2 import enhance_sequence_matches_batch
                     
+                    # Enhance all matches in a single batch operation
+                    enhanced_matches_batch = enhance_sequence_matches_batch(sequence_matches_batch)
+                    print("ENHANCED MATCHES")
+                    print((enhanced_matches_batch))
                     # Organize matches by site for display
                     sequence_matches = {}
-                    for site_id, matches in sequence_matches_batch.items():
+                    for site_id, matches in enhanced_matches_batch.items():
                         # Skip empty match lists
                         if not matches:
                             continue
@@ -833,12 +834,11 @@ def phosphosite_analysis():
                                 site_name = site_num
                                 
                             # Add matches to the dictionary if there are any
-                            if matches:
-                                # Enhance matches with supplementary data
-                                enhanced_matches = enhance_sequence_matches(matches)
-                                sequence_matches[site_name] = enhanced_matches
+                            sequence_matches[site_name] = matches
                     
-                    results['sequence_matches'] = sequence_matches
+                    # Log the result
+                    logger.info(f"Processed sequence similarity matches for {len(sequence_matches)} sites")
+                    
                 except Exception as e:
                     logger.error(f"Error analyzing sequence similarity matches: {e}")
                     import traceback
@@ -870,6 +870,11 @@ def phosphosite_analysis():
             
             # Generate sequence similarity network visualization
             from protein_explorer.visualization.protein_sequence_phosphosite_network import create_sequence_network_visualization
+            print("PRE NETWORK VISUALIZATION")
+            print("SEQUENCE MATCHES")
+            print(results['sequence_matches'])
+            print("PHOSPHOSITES")
+            print(results['phosphosites'])
             sequence_network_visualization = create_sequence_network_visualization(
                 results['protein_info']['uniprot_id'],
                 results['phosphosites'],

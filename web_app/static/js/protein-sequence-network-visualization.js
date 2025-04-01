@@ -120,8 +120,8 @@ function sequenceNetworkVisualization(proteinUniprotId) {
         return Math.max(1, 4 * d.similarity);
     }
     
-    // Setup force simulation
-    const sequenceNetworkSimulation = d3.forceSimulation(networkData.nodes)
+    // Setup force simulation - store it in window for access by filter function
+    window.sequenceNetworkSimulation = d3.forceSimulation(networkData.nodes)
         .force('link', d3.forceLink(networkData.links)
             .id(d => d.id)
             .distance(d => 100 * (1 - (d.similarity || 0.5))))
@@ -132,8 +132,8 @@ function sequenceNetworkVisualization(proteinUniprotId) {
         .force('x', d3.forceX(width / 2).strength(0.1))
         .force('y', d3.forceY(height / 2).strength(0.1));
     
-    // Draw links
-    const link = g.append('g')
+    // Draw links - store in window for access by filter function
+    window.sequenceNetworkLinks = g.append('g')
         .selectAll('line')
         .data(networkData.links)
         .enter()
@@ -143,8 +143,8 @@ function sequenceNetworkVisualization(proteinUniprotId) {
         .attr('stroke-opacity', 0.6)
         .attr('class', 'sequence-network-link');
     
-    // Draw nodes
-    const node = g.append('g')
+    // Draw nodes - store in window for access by filter function
+    window.sequenceNetworkNodes = g.append('g')
         .selectAll('circle')
         .data(networkData.nodes)
         .enter()
@@ -161,8 +161,8 @@ function sequenceNetworkVisualization(proteinUniprotId) {
             .on('drag', dragged)
             .on('end', dragended));
     
-    // Add labels for protein sites
-    const label = g.append('g')
+    // Add labels for protein sites - store in window for access by filter function
+    window.sequenceNetworkLabels = g.append('g')
         .selectAll('text')
         .data(networkData.nodes.filter(d => d.type === 'protein'))
         .enter()
@@ -224,7 +224,7 @@ function sequenceNetworkVisualization(proteinUniprotId) {
     }
     
     // Node interactions
-    node
+    window.sequenceNetworkNodes
         .on('mouseover', function(event, d) {
             // Highlight node on hover
             d3.select(this)
@@ -248,26 +248,21 @@ function sequenceNetworkVisualization(proteinUniprotId) {
         });
     
     // Tick function for the simulation
-    sequenceNetworkSimulation.on('tick', () => {
-        link
+    window.sequenceNetworkSimulation.on('tick', () => {
+        window.sequenceNetworkLinks
             .attr('x1', d => d.source.x)
             .attr('y1', d => d.source.y)
             .attr('x2', d => d.target.x)
             .attr('y2', d => d.target.y);
         
-        node
+        window.sequenceNetworkNodes
             .attr('cx', d => d.x)
             .attr('cy', d => d.y);
         
-        label
+        window.sequenceNetworkLabels
             .attr('x', d => d.x)
             .attr('y', d => d.y);
     });
-    
-    // Store nodes and links for filter function
-    window.sequenceNetworkNodes = node;
-    window.sequenceNetworkLinks = link;
-    window.sequenceNetworkLabels = label;
     
     // Apply initial filter threshold
     updateSequenceNetworkFilter();
@@ -280,7 +275,7 @@ function sequenceNetworkVisualization(proteinUniprotId) {
     
     // Drag functions
     function dragstarted(event, d) {
-        if (!event.active) sequenceNetworkSimulation.alphaTarget(0.3).restart();
+        if (!event.active) window.sequenceNetworkSimulation.alphaTarget(0.3).restart();
         d.fx = d.x;
         d.fy = d.y;
     }
@@ -291,7 +286,7 @@ function sequenceNetworkVisualization(proteinUniprotId) {
     }
     
     function dragended(event, d) {
-        if (!event.active) sequenceNetworkSimulation.alphaTarget(0);
+        if (!event.active) window.sequenceNetworkSimulation.alphaTarget(0);
         d.fx = null;
         d.fy = null;
     }
@@ -812,73 +807,63 @@ function updateSequenceNetworkFilter() {
     const threshold = parseFloat(document.getElementById('similarity-filter').value);
     console.log(`Similarity threshold set to: ${threshold}`);
     
-    // Count visible links before filtering
-    const initialVisibleLinks = window.sequenceNetworkLinks.filter(function() {
-        return window.getComputedStyle(this).display !== 'none';
-    }).size();
+    // First show all nodes and links to reset any previous filtering
+    window.sequenceNetworkNodes.style('display', null);
+    window.sequenceNetworkLinks.style('display', null);
+    
+    // Now count all nodes and links before applying the new filter
+    const initialVisibleLinks = window.sequenceNetworkLinks.size();
+    const initialVisibleNodes = window.sequenceNetworkNodes.size();
     
     // Filter links by similarity
     window.sequenceNetworkLinks.style('display', function(d) {
-        const visible = d.similarity >= threshold;
-        return visible ? null : 'none';
+        return d.similarity >= threshold ? null : 'none';
     });
     
-    // Count links after filtering
+    // Create a set to track nodes that should be visible
+    const visibleNodeIds = new Set();
+    
+    // Add all protein nodes as they should always be visible
+    window.sequenceNetworkNodes.each(function(d) {
+        if (d.type === 'protein') {
+            visibleNodeIds.add(d.id);
+        }
+    });
+    
+    // Add match nodes that have connections above the threshold
+    window.sequenceNetworkLinks.each(function(d) {
+        if (d.similarity >= threshold) {
+            // Handle both object and string source/target
+            const sourceId = typeof d.source === 'object' ? d.source.id : d.source;
+            const targetId = typeof d.target === 'object' ? d.target.id : d.target;
+            visibleNodeIds.add(sourceId);
+            visibleNodeIds.add(targetId);
+        }
+    });
+    
+    // Update node visibility based on our visibility set
+    window.sequenceNetworkNodes.style('display', function(d) {
+        return visibleNodeIds.has(d.id) ? null : 'none';
+    });
+    
+    // Update label visibility
+    if (window.sequenceNetworkLabels) {
+        window.sequenceNetworkLabels.style('display', function(d) {
+            return visibleNodeIds.has(d.id) ? null : 'none';
+        });
+    }
+    
+    // Count nodes and links after filtering
     const filteredVisibleLinks = window.sequenceNetworkLinks.filter(function() {
         return window.getComputedStyle(this).display !== 'none';
     }).size();
     
-    console.log(`Links: ${initialVisibleLinks} → ${filteredVisibleLinks} after filtering`);
-    
-    // Count visible nodes before filtering
-    const initialVisibleNodes = window.sequenceNetworkNodes.filter(function() {
-        return window.getComputedStyle(this).display !== 'none';
-    }).size();
-    
-    // Update node visibility
-    window.sequenceNetworkNodes.style('display', function(d) {
-        // Always show protein sites
-        if (d.type === 'protein') {
-            return null; // Always visible
-        }
-        
-        // For match nodes, check if they have any visible connections
-        const linkData = window.sequenceNetworkLinks.data();
-        const hasVisibleConnection = linkData.some(link => {
-            const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
-            const targetId = typeof link.target === 'object' ? link.target.id : link.target;
-            
-            const isConnected = ((sourceId === d.id || targetId === d.id) && 
-                                link.similarity >= threshold);
-            return isConnected;
-        });
-        
-        return hasVisibleConnection ? null : 'none';
-    });
-    
-    // Count nodes after filtering
     const filteredVisibleNodes = window.sequenceNetworkNodes.filter(function() {
         return window.getComputedStyle(this).display !== 'none';
     }).size();
     
+    console.log(`Links: ${initialVisibleLinks} → ${filteredVisibleLinks} after filtering`);
     console.log(`Nodes: ${initialVisibleNodes} → ${filteredVisibleNodes} after filtering`);
-    
-    // Update labels visibility to match nodes
-    if (window.sequenceNetworkLabels) {
-        window.sequenceNetworkLabels.style('display', function(d) {
-            // Find the corresponding node
-            const matchingNode = window.sequenceNetworkNodes.filter(function(node) {
-                return node.__data__.id === d.id;
-            });
-            
-            if (matchingNode.size() > 0) {
-                const node = matchingNode.node();
-                // Check if the node is visible
-                return window.getComputedStyle(node).display !== 'none' ? null : 'none';
-            }
-            return null;
-        });
-    }
 }
 
 // Initialize on page load
