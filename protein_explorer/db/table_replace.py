@@ -1,50 +1,42 @@
-import pymysql
 import os
 import logging
+import pymysql
 import time
+import sys
 import pandas as pd
-import pyarrow.feather as feather
-from tqdm import tqdm
+import tempfile
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Database connection parameters
+# Database connection parameters - using the same as in your db.py
 DB_HOST = os.environ.get('DB_HOST', '35.245.113.195')
 DB_USER = os.environ.get('DB_USER', 'root')
 DB_PASS = os.environ.get('DB_PASS', '@Bismark6')
 DB_NAME = os.environ.get('DB_NAME', 'kinoplex-db')
 DB_PORT = int(os.environ.get('DB_PORT', '3306'))
 
-def create_similarity_table_from_feather(feather_file_path):
-    """
-    Create a new Sequence_Similarity_Edges_4 table from feather file.
-    
-    Args:
-        feather_file_path: Path to feather file containing similarity data
-    """
+# Path to the new data file
+NEW_DATA_FILE = r'C:/Users/mz30/protein_explorer/data/Combined_Kinome_10A_Master_Filtered_2.feather'
+
+def update_structural_similarity_table():
+    """Replace the Structural_Similarity_Edges table with new data using faster CSV import."""
     connection = None
+    temp_csv = None
+    
     try:
-        # Load the feather file
-        logger.info(f"Loading feather file from {feather_file_path}...")
-        df = feather.read_feather(feather_file_path)
-        logger.info(f"Loaded {len(df)} rows of similarity data")
+        # Step 1: Read Feather and convert to CSV for faster import
+        logger.info(f"Reading feather file and converting to CSV...")
+        start_time = time.time()
+        df = pd.read_feather(NEW_DATA_FILE)
+        logger.info(f"Loaded feather file with {len(df)} rows and {len(df.columns)} columns")
+        logger.info(f"Column names: {list(df.columns)}")
         
-        # Print the actual column names from the feather file
-        logger.info(f"Feather file contains columns: {df.columns.tolist()}")
-        
-        # Rename columns to match the database table
-        # Assuming the feather file has columns that need to be mapped to ID1, ID2, Similarity
-        # Replace these with the actual column names from your feather file
-        column_mapping = {
-            df.columns[0]: 'ID1',   # First column maps to ID1
-            df.columns[1]: 'ID2',   # Second column maps to ID2
-            df.columns[2]: 'Similarity'  # Third column maps to Similarity
-        }
-        
-        logger.info(f"Mapping columns: {column_mapping}")
-        df = df.rename(columns=column_mapping)
+        # Create a temp CSV file
+        temp_csv = os.path.join(tempfile.gettempdir(), 'temp_structure_data.csv')
+        df.to_csv(temp_csv, index=False)
+        logger.info(f"Converted to CSV in {time.time() - start_time:.2f} seconds: {temp_csv}")
         
         # Connect to the database
         logger.info(f"Connecting to database {DB_NAME} at {DB_HOST}...")
@@ -54,93 +46,186 @@ def create_similarity_table_from_feather(feather_file_path):
             password=DB_PASS,
             database=DB_NAME,
             port=DB_PORT,
-            charset='utf8mb4'
+            charset='utf8mb4',
+            local_infile=True  # Important for LOAD DATA LOCAL INFILE
         )
         
         with connection.cursor() as cursor:
-            # Check if the table already exists
-            cursor.execute("SHOW TABLES LIKE 'Sequence_Similarity_Edges_4'")
-            if cursor.fetchone():
-                logger.warning("Table Sequence_Similarity_Edges_4 already exists")
-                response = input("Do you want to drop and recreate it? (y/n): ")
-                if response.lower() != 'y':
-                    logger.info("Operation cancelled")
-                    return
-                cursor.execute("DROP TABLE Sequence_Similarity_Edges_4")
-                logger.info("Dropped existing table")
+            # Create backup of original table
+            logger.info("Creating backup of current Structural_Similarity_Edges table...")
+            cursor.execute("CREATE TABLE IF NOT EXISTS Structural_Similarity_Edges_Backup AS SELECT * FROM Structural_Similarity_Edges")
             
-            # Create the new table
-            cursor.execute("""
-                CREATE TABLE Sequence_Similarity_Edges_4 (
-                    ID1 VARCHAR(100) NOT NULL,
-                    ID2 VARCHAR(100) NOT NULL,
-                    Similarity FLOAT NOT NULL
-                )
-            """)
-            logger.info("Created new table Sequence_Similarity_Edges_4")
+            # Check the backup
+            cursor.execute("SELECT COUNT(*) FROM Structural_Similarity_Edges_Backup")
+            backup_count = cursor.fetchone()[0]
+            logger.info(f"Backup created with {backup_count} rows")
             
-            # Prepare data for insertion
-            logger.info("Preparing data for insertion...")
-            # Convert DataFrame to list of tuples for batch insertion
-            data_tuples = list(zip(df['ID1'], df['ID2'], df['Similarity']))
+            # Drop the old table and create new one with same name but new columns
+            logger.info("Dropping temporary table if it exists...")
+            cursor.execute("DROP TABLE IF EXISTS Structural_Similarity_Edges_New")
             
-            # Insert data in batches to avoid memory issues
-            batch_size = 10000
-            total_batches = len(data_tuples) // batch_size + (1 if len(data_tuples) % batch_size > 0 else 0)
+            # Create new table schema based on DataFrame columns
+            columns = []
+            for col in df.columns:
+                # Get the data type from the DataFrame
+                dtype = df[col].dtype
+                
+                # Map pandas dtypes to MySQL data types
+                if pd.api.types.is_float_dtype(dtype):
+                    sql_type = "DOUBLE"
+                elif pd.api.types.is_integer_dtype(dtype):
+                    sql_type = "INT"
+                elif pd.api.types.is_bool_dtype(dtype):
+                    sql_type = "BOOL"
+                else:
+                    # For string/object types, use VARCHAR(255)
+                    sql_type = "VARCHAR(255)"
+                
+                # Escape column name to handle special characters
+                escaped_col = f"`{col}`"
+                columns.append(f"{escaped_col} {sql_type}")
             
-            logger.info(f"Inserting data in {total_batches} batches...")
-            for i in tqdm(range(0, len(data_tuples), batch_size)):
-                batch = data_tuples[i:i + batch_size]
-                # Use executemany for efficient batch insertion
-                cursor.executemany(
-                    "INSERT INTO Sequence_Similarity_Edges_4 (ID1, ID2, Similarity) VALUES (%s, %s, %s)",
-                    [(str(t[0]), str(t[1]), float(t[2])) for t in batch]
-                )
-                connection.commit()  # Commit each batch
+            # Create table with new schema
+            create_table_query = f"""
+            CREATE TABLE Structural_Similarity_Edges_New (
+                id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                {', '.join(columns)}
+            ) ENGINE=InnoDB
+            """
             
-            logger.info("All data inserted successfully")
+            logger.info(f"Creating new table with schema based on feather file...")
+            cursor.execute(create_table_query)
             
-            # Create the same indexes as the original table
-            logger.info("Creating indexes...")
+            # Use LOAD DATA INFILE for fast import
+            logger.info("Importing data using LOAD DATA INFILE...")
             start_time = time.time()
-            cursor.execute("""
-                CREATE INDEX idx_id1_sim ON Sequence_Similarity_Edges_4(ID1(50), Similarity)
-            """)
-            logger.info(f"Created idx_id1_sim index in {time.time() - start_time:.2f} seconds")
             
-            start_time = time.time()
-            cursor.execute("""
-                CREATE INDEX idx_id2_sim ON Sequence_Similarity_Edges_4(ID2(50), Similarity)
-            """)
-            logger.info(f"Created idx_id2_sim index in {time.time() - start_time:.2f} seconds")
+            # Prepare the LOAD DATA INFILE statement
+            load_query = f"""
+            LOAD DATA LOCAL INFILE '{temp_csv.replace('\\', '/')}' 
+            INTO TABLE Structural_Similarity_Edges_New
+            FIELDS TERMINATED BY ',' 
+            OPTIONALLY ENCLOSED BY '"' 
+            LINES TERMINATED BY '\\n'
+            IGNORE 1 LINES
+            """
             
-            # Final commit
+            try:
+                cursor.execute(load_query)
+                connection.commit()
+                logger.info(f"Data import completed in {time.time() - start_time:.2f} seconds")
+            except Exception as e:
+                logger.error(f"Error during LOAD DATA INFILE: {e}")
+                logger.info("Attempting to use alternative import method...")
+                
+                # If LOAD DATA INFILE fails, try using sqlalchemy as a fallback
+                try:
+                    from sqlalchemy import create_engine
+                    
+                    # Create engine
+                    connection_string = f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+                    engine = create_engine(connection_string)
+                    
+                    # Import data in chunks
+                    logger.info("Importing data using SQLAlchemy in chunks...")
+                    start_time = time.time()
+                    
+                    # Truncate the table first
+                    cursor.execute("TRUNCATE TABLE Structural_Similarity_Edges_New")
+                    connection.commit()
+                    
+                    # Import in chunks of 10000 rows
+                    df.to_sql('Structural_Similarity_Edges_New', engine, 
+                             if_exists='append', index=False, 
+                             chunksize=10000, method='multi')
+                    
+                    logger.info(f"SQLAlchemy import completed in {time.time() - start_time:.2f} seconds")
+                except Exception as e2:
+                    logger.error(f"Alternative import also failed: {e2}")
+                    raise
+            
+            # Verify the imported data
+            cursor.execute("SELECT COUNT(*) FROM Structural_Similarity_Edges_New")
+            new_count = cursor.fetchone()[0]
+            logger.info(f"New table has {new_count} rows")
+            
+            if new_count == 0:
+                raise ValueError("No data was imported into the new table. Aborting replacement.")
+            
+            # Replace the original table with the new one
+            logger.info("Replacing original table with new table...")
+            cursor.execute("RENAME TABLE Structural_Similarity_Edges TO Structural_Similarity_Edges_Old, Structural_Similarity_Edges_New TO Structural_Similarity_Edges")
             connection.commit()
-            logger.info("Successfully created Sequence_Similarity_Edges_4 with all data and indexes")
             
-            # Print table summary
-            cursor.execute("SELECT COUNT(*) FROM Sequence_Similarity_Edges_4")
-            count = cursor.fetchone()[0]
-            logger.info(f"Table now contains {count} rows")
+            # Create indexes (if needed)
+            logger.info("Creating indices on the new table...")
+            index_statements = []
             
-            # Verify indexes
-            cursor.execute("SHOW INDEX FROM Sequence_Similarity_Edges_4")
-            indexes = cursor.fetchall()
-            logger.info(f"Table has {len(indexes)} indexes:")
-            for idx in indexes:
-                logger.info(f"  - {idx[2]} on column {idx[4]}")
-
+            # Check if expected columns exist for the standard indexes
+            if 'Query' in df.columns and 'RMSD' in df.columns:
+                index_statements.append("CREATE INDEX idx_query_rmsd ON Structural_Similarity_Edges(`Query`(50), `RMSD`)")
+            
+            if 'Target' in df.columns:
+                index_statements.append("CREATE INDEX idx_target ON Structural_Similarity_Edges(`Target`(50))")
+            
+            # Execute index creation
+            start_time = time.time()
+            for statement in index_statements:
+                try:
+                    logger.info(f"Executing: {statement}")
+                    cursor.execute(statement)
+                    connection.commit()
+                except pymysql.err.OperationalError as e:
+                    if "Duplicate key name" in str(e):
+                        logger.info(f"Index already exists: {e}")
+                    else:
+                        logger.error(f"Error creating index: {e}")
+            
+            end_time = time.time()
+            logger.info(f"Index creation completed in {end_time - start_time:.2f} seconds")
+            
+            # Check if user wants to drop the old table
+            logger.info("Do you want to drop the old table Structural_Similarity_Edges_Old? (yes/no)")
+            choice = input().strip().lower()
+            if choice == 'yes':
+                cursor.execute("DROP TABLE Structural_Similarity_Edges_Old")
+                connection.commit()
+                logger.info("Old table dropped")
+            else:
+                logger.info("Old table retained for safety")
+            
+            # Analyze table for query optimization
+            logger.info("Analyzing table for optimal query performance...")
+            cursor.execute("ANALYZE TABLE Structural_Similarity_Edges")
+            analyze_result = cursor.fetchall()
+            for result in analyze_result:
+                logger.info(f"Table analysis: {result}")
+            
+            logger.info("Table update completed successfully")
+            
     except Exception as e:
-        logger.error(f"Error creating similarity table: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
+        logger.error(f"Error updating structural similarity table: {e}")
         if connection:
             connection.rollback()
+        logger.info("Rolling back changes. The original table remains unchanged.")
+        raise
     finally:
+        # Clean up
         if connection:
             connection.close()
             logger.info("Database connection closed")
+        
+        # Remove temporary CSV file
+        if temp_csv and os.path.exists(temp_csv):
+            try:
+                os.remove(temp_csv)
+                logger.info(f"Temporary CSV file removed")
+            except Exception as e:
+                logger.warning(f"Failed to remove temporary CSV file: {e}")
 
 if __name__ == "__main__":
-    feather_file_path = "C:/Users/mz30/protein_explorer/phosphosite_similarity_results.feather"
-    create_similarity_table_from_feather(feather_file_path)
+    try:
+        update_structural_similarity_table()
+    except Exception as e:
+        logger.error(f"Script execution failed: {e}")
+        sys.exit(1)

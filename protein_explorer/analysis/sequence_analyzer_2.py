@@ -165,8 +165,6 @@ def enhance_sequence_matches(matches: List[Dict]) -> List[Dict]:
             # Check for site type in Residue field from supplementary data
             if target_id and target_id in supp_data_batch:
                 site_data = supp_data_batch[target_id]
-                print("HERE IS THE SITE DATA, IS RESIDUE COLUMN PRESENT?")
-                print(site_data)
                 # Get site type from Residue/residue column if available
                 if 'Residue' in site_data and site_data.get('Residue') in 'STY':
                     enhanced['site_type'] = site_data['Residue']

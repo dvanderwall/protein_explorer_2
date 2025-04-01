@@ -127,8 +127,14 @@ TABLES = {
     },
     "Structural_Similarity_Edges": {
         "columns": [
-            "Query", "Target", "Mapped_Site", "RMSD", "Mapped_Residues", 
-            "FoldDisco_Score", "Max_Residues", "NumberMapped", "Map_Ratio"
+            "Query", "Target", "GlobalScore", "QueryNeighborhood", 
+            "TargetNeighborhood", "QueryNeighborhoodSize", "TargetNeighborhoodSize", 
+            "MappedQueryResidues", "MappedTargetResidues", "MappingRatio", "RMSD", 
+            "QueryPercentHydrophobicity", "TargetPercentHydrophobicity", "QueryPercentHydrophilicity",  
+            "TargetPercentHydrophilicity", "QueryPercentAcidity", "TargetPercentAcidity", 
+            "QueryPercentBasicity", "TargetPercentBasicity", "QueryPercentAromatic", 
+            "TargetPercentAromatic", "QueryPocket_pI", "TargetPocket_pI", "QueryPocket_pKa", 
+            "TargetPocket_pKa"
         ],
         "indexes": {
             "Query": "idx_query_rmsd",
@@ -381,6 +387,9 @@ def init_db():
         metadata.reflect(engine)
         
         logger.info("Database connection initialized successfully")
+
+        print_structural_edges_sample(100)
+
         return True
     except Exception as e:
         logger.error(f"Error initializing database: {e}")
@@ -770,9 +779,7 @@ def find_structural_matches(site_id: str, rmsd_threshold: float = 5.0) -> List[D
                         "target_uniprot": target_uniprot,
                         "target_site": target_site,
                         "rmsd": float(row_dict.get("RMSD", 0)),
-                        "max_residues": int(row_dict.get("Max_Residues", 0)),
-                        "number_mapped": int(row_dict.get("NumberMapped", 0)),
-                        "map_ratio": float(row_dict.get("Map_Ratio", 0))
+                        "map_ratio": float(row_dict.get("MappingRatio", 0))
                     }
                     
                     matches.append(match_dict)
@@ -828,7 +835,8 @@ def find_structural_matches_batch(site_ids: List[str], rmsd_threshold: float = 5
             id_param_name="site_ids", 
             extra_params={"rmsd_threshold": rmsd_threshold}
         )
-        
+        print('Here is Pre-Structural Data Structure')
+        print(df)
         if not df.empty:
             # Organize matches by query site
             for _, row in df.iterrows():
@@ -842,10 +850,16 @@ def find_structural_matches_batch(site_ids: List[str], rmsd_threshold: float = 5
                 target_id = row_dict.get("Target", "")
                 target_parts = target_id.split('_')
                 
+                #print("TARGET_ID")
+                #print(target_id)
+                #print("TARGET PARTS")
+                #print(target_parts)
+
                 if len(target_parts) >= 2:
                     target_uniprot = target_parts[0]
                     target_site_raw = target_parts[1]
-                    
+                    print("TARGET SITE RAW")
+                    print(target_site_raw)
                     # Extract residue type and number
                     match = re.match(r'([STY]?)(\d+)', target_site_raw)
                     if match:
@@ -863,9 +877,7 @@ def find_structural_matches_batch(site_ids: List[str], rmsd_threshold: float = 5
                         "target_uniprot": target_uniprot,
                         "target_site": target_site,
                         "rmsd": float(row_dict.get("RMSD", 0)),
-                        "max_residues": int(row_dict.get("Max_Residues", 0)),
-                        "number_mapped": int(row_dict.get("NumberMapped", 0)),
-                        "map_ratio": float(row_dict.get("Map_Ratio", 0))
+                        "map_ratio": float(row_dict.get("MappingRatio", 0))
                     }
                     
                     cached_results[query_id].append(match_dict)
@@ -1634,5 +1646,68 @@ def get_db_stats():
     
     return stats
 
+def print_structural_edges_sample(sample_size=100):
+    """
+    Print a sample of the first rows from the Structural_Similarity_Edges table.
+    Useful for debugging and verification after table updates.
+    
+    Args:
+        sample_size: Number of rows to sample (default: 100)
+    """
+    try:
+        # Ensure DB connection is initialized
+        if engine is None:
+            init_db()
+            
+        # Query to get the first N rows
+        sample_query = f"""
+        SELECT * FROM Structural_Similarity_Edges
+        LIMIT {sample_size}
+        """
+        
+        df = execute_query(sample_query)
+        
+        if df.empty:
+            logger.warning("No data found in Structural_Similarity_Edges table")
+            return
+            
+        # Log basic stats
+        logger.info(f"Structural_Similarity_Edges table sample ({len(df)} rows):")
+        logger.info(f"Columns: {list(df.columns)}")
+        
+        # Get a count of total rows
+        count_query = "SELECT COUNT(*) as total FROM Structural_Similarity_Edges"
+        count_df = execute_query(count_query)
+        total_rows = count_df.iloc[0]['total'] if not count_df.empty else "unknown"
+        logger.info(f"Total rows in table: {total_rows}")
+        
+        # For each row in the sample, print a summary
+        for i, row in df.iterrows():
+            # Limit to first 10 rows of detailed output to avoid log spam
+            if i < 10:
+                logger.info(f"Row {i+1}:")
+                logger.info(f"  Query: {row.get('Query', 'N/A')}")
+                logger.info(f"  Target: {row.get('Target', 'N/A')}")
+                logger.info(f"  RMSD: {row.get('RMSD', 'N/A')}")
+                
+                # Print a few of the new columns if they exist
+                for col in ['GlobalScore', 'QueryNeighborhood', 'MappingRatio']:
+                    if col in row:
+                        value = row[col]
+                        # Truncate long string values
+                        if isinstance(value, str) and len(value) > 50:
+                            value = value[:50] + "..."
+                        logger.info(f"  {col}: {value}")
+                logger.info("  ---")
+                
+        # Print a simple summary for the remaining rows
+        if len(df) > 10:
+            logger.info(f"... and {len(df) - 10} more rows in sample")
+            
+    except Exception as e:
+        logger.error(f"Error printing Structural_Similarity_Edges sample: {e}")
+
+
 # Initialize database on module import
 init_db()
+

@@ -714,8 +714,10 @@ def phosphosite_analysis():
                 # Try to find structural matches
                 try:
                     # Batch query for structural matches
-                    all_matches = find_structural_matches_batch(site_ids, rmsd_threshold=5.0)
-                    
+                    print("LOOKING FOR STRUCTURAL MATCHES")
+                    all_matches = find_structural_matches_batch(site_ids, rmsd_threshold=10.0)
+                    print("ALL STRUCTURAL MATCHES")
+                    print(all_matches)
                     # Organize by site
                     structural_matches = {}
                     for site in phosphosites:
