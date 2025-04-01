@@ -850,16 +850,10 @@ def find_structural_matches_batch(site_ids: List[str], rmsd_threshold: float = 5
                 target_id = row_dict.get("Target", "")
                 target_parts = target_id.split('_')
                 
-                #print("TARGET_ID")
-                #print(target_id)
-                #print("TARGET PARTS")
-                #print(target_parts)
-
+                
                 if len(target_parts) >= 2:
                     target_uniprot = target_parts[0]
                     target_site_raw = target_parts[1]
-                    print("TARGET SITE RAW")
-                    print(target_site_raw)
                     # Extract residue type and number
                     match = re.match(r'([STY]?)(\d+)', target_site_raw)
                     if match:

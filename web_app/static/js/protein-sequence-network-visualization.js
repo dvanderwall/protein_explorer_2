@@ -340,7 +340,6 @@ function addNetworkLegend(svg, width) {
         .attr("font-size", "12px");
 }
 
-// Extract network data from the page with enhanced motif and kinase handling
 function extractSequenceNetworkData(proteinUniprotId) {
     try {
         console.log("Extracting sequence network data for", proteinUniprotId);
@@ -411,7 +410,9 @@ function extractSequenceNetworkData(proteinUniprotId) {
             }
         }
         
-        // Step 3: Add all protein site nodes (excluding Tyrosine sites)
+        // Step 3: Add all protein site nodes initially (excluding Tyrosine sites)
+        // We'll filter out unconnected nodes later
+        const tempNodes = [];
         for (const site of phosphositesData) {
             // Skip Tyrosine (Y) sites as requested
             if (site.site && site.site[0] === 'Y') {
@@ -441,15 +442,16 @@ function extractSequenceNetworkData(proteinUniprotId) {
                 mean_plddt: site.mean_plddt || site.meanPLDDT || '',
                 nearby_count: site.nearby_count || site.nearbyCount || '',
                 surface_accessibility: site.surface_accessibility || site.surfaceAccessibility || '',
-                size: 10
+                size: 10,
+                hasConnections: false  // Track whether this node has connections
             };
             
-            // Add node to our collection
-            nodes.push(node);
+            // Store node temporarily and in the node map
+            tempNodes.push(node);
             nodeMap.set(nodeId, node);
         }
         
-        console.log(`Created ${nodes.length} protein nodes`);
+        console.log(`Created ${tempNodes.length} temporary protein nodes`);
         
         // Step 4: Get sequence matches from the hidden data element
         const matchesDataElement = document.getElementById('sequence-match-data');
@@ -495,7 +497,7 @@ function extractSequenceNetworkData(proteinUniprotId) {
                             const nodeId = `${proteinUniprotId}_${siteNumber}`;
                             
                             // Find the protein node for this site
-                            let proteinNode = nodes.find(n => n.id === nodeId);
+                            let proteinNode = nodeMap.get(nodeId);
                             
                             // If we don't have this protein node yet (possibly because it wasn't in phosphositesData)
                             if (!proteinNode && siteType !== 'Y') {
@@ -518,11 +520,12 @@ function extractSequenceNetworkData(proteinUniprotId) {
                                     is_known_phosphosite: 0,
                                     siteType: siteType,
                                     motif: motifInfo,
-                                    size: 10
+                                    size: 10,
+                                    hasConnections: false
                                 };
                                 
-                                // Add to nodes collection
-                                nodes.push(proteinNode);
+                                // Add to temp nodes collection and map
+                                tempNodes.push(proteinNode);
                                 nodeMap.set(nodeId, proteinNode);
                                 console.log(`Added protein node from matches: ${nodeId}`);
                             }
@@ -554,6 +557,9 @@ function extractSequenceNetworkData(proteinUniprotId) {
                                 
                                 // Skip self-references
                                 if (nodeId === targetId) continue;
+                                
+                                // Mark this protein node as having connections
+                                proteinNode.hasConnections = true;
                                 
                                 // Extract or retrieve motif information
                                 let motif = match.motif || '';
@@ -602,7 +608,8 @@ function extractSequenceNetworkData(proteinUniprotId) {
                                         mean_plddt: match.mean_plddt || match.site_plddt || '',
                                         nearby_count: match.nearby_count || '',
                                         surface_accessibility: match.surface_accessibility || '',
-                                        size: 8
+                                        size: 8,
+                                        hasConnections: true  // Match nodes always have connections
                                     };
                                     
                                     nodes.push(targetNode);
@@ -623,6 +630,15 @@ function extractSequenceNetworkData(proteinUniprotId) {
                 console.error("Error processing sequence match data:", e);
             }
         }
+        
+        // Now add only the protein nodes that have connections
+        for (const node of tempNodes) {
+            if (node.hasConnections) {
+                nodes.push(node);
+            }
+        }
+        
+        console.log(`Final nodes after filtering unconnected protein sites: ${nodes.length}`);
         
         // Final filtering step - remove any remaining Tyrosine nodes/links
         const filteredNodes = nodes.filter(node => 

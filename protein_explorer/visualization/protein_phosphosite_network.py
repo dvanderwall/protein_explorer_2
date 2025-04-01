@@ -198,10 +198,10 @@ def create_phosphosite_network_visualization(protein_uniprot_id, phosphosites=No
                     type="range" 
                     class="form-range" 
                     id="rmsd-filter" 
-                    min="0.5" 
-                    max="5.0" 
+                    min="0.1" 
+                    max="3.0" 
                     step="0.1" 
-                    value="2.0"
+                    value="1.0"
                     oninput="document.getElementById('rmsd-value').textContent = this.value + ' Å'; updateNetworkFilter();"
                 >
                 <div class="d-flex justify-content-between">
