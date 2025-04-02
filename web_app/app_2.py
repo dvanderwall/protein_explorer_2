@@ -619,6 +619,7 @@ def phosphosite_analysis():
     
     # Import enhanced table function
     from protein_explorer.analysis.enhanced_table import enhance_phosphosite_table
+    from protein_explorer.analysis.motif_blosum_scorer import find_blosum_matches_batch
     
     # Initialize variables
     results = None
@@ -810,8 +811,7 @@ def phosphosite_analysis():
                     
                     # Enhance all matches in a single batch operation
                     enhanced_matches_batch = enhance_sequence_matches_batch(sequence_matches_batch)
-                    print("ENHANCED MATCHES")
-                    print((enhanced_matches_batch))
+                    
                     # Organize matches by site for display
                     sequence_matches = {}
                     for site_id, matches in enhanced_matches_batch.items():
@@ -823,8 +823,7 @@ def phosphosite_analysis():
                         
                         # Get the site name from the site_id
                         site_parts = site_id.split('_')
-                        print("SITE PARTS")
-                        print(site_parts)
+                        
                         if len(site_parts) >= 2:
                             uniprot_id = site_parts[0]
                             site_num = site_parts[1]
@@ -857,11 +856,63 @@ def phosphosite_analysis():
                             # Add matches to the dictionary
                             sequence_matches[site_name] = matches
                             print(f"Added {len(matches)} matches for site {site_name} from {site_id}")
-                    print("Sequence_Matches")
-                    print(sequence_matches)
+                    
                     results['sequence_matches'] = sequence_matches
                     # Log the result
                     logger.info(f"Processed sequence similarity matches for {len(sequence_matches)} sites")
+                    
+                    # Collect sites that don't have sequence matches for BLOSUM scoring
+                    unmatched_sites = []
+                    print("FINDING UNMATCHESD SITES")
+                    for site in phosphosites:
+                        # Skip Tyrosine (Y) sites as we do with the regular sequence matches
+                        if site.get('site', '')[0] == 'Y':
+                            continue
+                            
+                        site_name = site.get('site', '')
+                        # Check if this site doesn't have sequence matches
+                        if not sequence_matches or site_name not in sequence_matches or not sequence_matches[site_name]:
+                            # Only include sites with valid motifs (no underscores)
+                            if 'motif' in site and site['motif'] and '_' not in site['motif']:
+                                unmatched_sites.append(site)
+                    print("FOUND UNMATCHED SITES")
+                    logger.info(f"Found {len(unmatched_sites)} unmatched sites with motifs for BLOSUM scoring")
+                    
+                    # Find BLOSUM matches for unmatched sites
+                    if unmatched_sites:
+                        # Use the same minimum similarity threshold as for regular sequence matches
+                        min_similarity = 0.3  # Adjust this to match your existing threshold
+                        
+                        # Get BLOSUM matches
+                        print("STARTING BLOSUM MATCHES")
+                        blosum_matches = find_blosum_matches_batch(unmatched_sites, min_similarity)
+                        print("FINISHED BLOSUM MATCHES")
+
+                        logger.info(f"Found BLOSUM matches for {len(blosum_matches)} previously unmatched sites")
+                        
+                        # Combine with existing sequence matches
+                        if not sequence_matches:
+                            sequence_matches = {}
+                            
+                        # Add BLOSUM matches to sequence_matches dictionary
+                        for site_name, matches in blosum_matches.items():
+                            if site_name in sequence_matches:
+                                # Add to existing matches
+                                sequence_matches[site_name].extend(matches)
+                                # Re-sort by similarity
+                                sequence_matches[site_name].sort(key=lambda x: x['similarity'], reverse=True)
+                            else:
+                                # Create new entry
+                                sequence_matches[site_name] = matches
+                                
+                        # Update results
+                        results['sequence_matches'] = sequence_matches
+                        
+                except Exception as e:
+                    logger.error(f"Error processing BLOSUM sequence matches: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    # Continue without BLOSUM matches if there's an error
                     
                 except Exception as e:
                     logger.error(f"Error analyzing sequence similarity matches: {e}")
@@ -877,6 +928,7 @@ def phosphosite_analysis():
             # Use enhanced table function for display
             if results['phosphosites']:
                 # Create enhanced HTML for the phosphosites
+                print("CREATING STRUCTURAL NETWORK VISUALIZATION")
                 phosphosites_html = enhance_phosphosite_table(
                     results['phosphosites'], 
                     results['protein_info']['uniprot_id']
@@ -894,11 +946,8 @@ def phosphosite_analysis():
             
             # Generate sequence similarity network visualization
             from protein_explorer.visualization.protein_sequence_phosphosite_network import create_sequence_network_visualization
-            print("PRE NETWORK VISUALIZATION")
-            print("SEQUENCE MATCHES")
-            print(results['sequence_matches'])
-            print("PHOSPHOSITES")
-            print(results['phosphosites'])
+            print("CREATING SEQUENCE NETWORK VISUALIZATION")
+
             sequence_network_visualization = create_sequence_network_visualization(
                 results['protein_info']['uniprot_id'],
                 results['phosphosites'],
