@@ -9,8 +9,10 @@ the -4 to +4 region around the phosphorylation site.
 import numpy as np
 import pandas as pd
 import logging
+import time
+from functools import lru_cache
 from typing import Dict, List, Tuple, Set, Optional
-from protein_explorer.db.db import get_phosphosites_batch, get_phosphosite_data
+from protein_explorer.db.db import get_phosphosites_batch, get_phosphosite_data, execute_query, init_db
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -43,6 +45,7 @@ BLOSUM62 = {
     'X': {'A': -1, 'R': -1, 'N': -1, 'D': -1, 'C': -1, 'Q': -1, 'E': -1, 'G': -1, 'H': -1, 'I': -1, 'L': -1, 'K': -1, 'M': -1, 'F': -1, 'P': -1, 'S': -1, 'T': -1, 'W': -1, 'Y': -1, 'V': -1, 'B': -1, 'Z': -1, 'X': -1, '*': -4},
     '*': {'A': -4, 'R': -4, 'N': -4, 'D': -4, 'C': -4, 'Q': -4, 'E': -4, 'G': -4, 'H': -4, 'I': -4, 'L': -4, 'K': -4, 'M': -4, 'F': -4, 'P': -4, 'S': -4, 'T': -4, 'W': -4, 'Y': -4, 'V': -4, 'B': -4, 'Z': -4, 'X': -4, '*': 1}
 }
+
 
 def extract_central_motif(motif: str, window_size: int = 4) -> str:
     """
@@ -110,9 +113,10 @@ def standardize_motif(motif: str, window_size: int = 4) -> str:
     # Combine standardized parts
     return before_site + site_char + after_site
 
-def calculate_blosum62_score(motif1: str, motif2: str) -> float:
+@lru_cache(maxsize=100000)
+def calculate_blosum62_score_cached(motif1: str, motif2: str) -> float:
     """
-    Calculate BLOSUM62 similarity score between two motifs.
+    Calculate BLOSUM62 similarity score between two motifs with caching.
     
     Args:
         motif1: First motif sequence
@@ -138,7 +142,7 @@ def calculate_blosum62_score(motif1: str, motif2: str) -> float:
         
         raw_score += BLOSUM62[aa1][aa2]
     
-    # Normalize by motif length to get scores in a more consistent range
+    # Normalize by motif length
     return raw_score / len(motif1)
 
 def normalize_similarity_score(score: float) -> float:
@@ -154,7 +158,6 @@ def normalize_similarity_score(score: float) -> float:
     """
     # Typical range of BLOSUM62 scores for -4:+4 motifs is roughly -20 to +20
     # We'll map this range to 0-1 for compatibility with your existing similarity scores
-    # Adjust these bounds if you find different score ranges in your actual data
     min_score = -20.0
     max_score = 20.0
     
@@ -164,9 +167,162 @@ def normalize_similarity_score(score: float) -> float:
     # Clamp to 0-1 range
     return max(0.0, min(1.0, normalized))
 
+def find_blosum_matches_batch_optimized(unmatched_sites: List[Dict], min_similarity: float = 0.4) -> Dict[str, List[Dict]]:
+    """
+    Optimized version: Find BLOSUM matches for multiple unmatched sites in batch.
+    This version uses trigram-based prefiltering and efficient database queries.
+    
+    Args:
+        unmatched_sites: List of site dictionaries that don't have sequence matches
+        min_similarity: Minimum normalized similarity score (0-1)
+        
+    Returns:
+        Dictionary mapping site names to lists of match dictionaries
+    """
+    if not unmatched_sites:
+        return {}
+    
+    logger.info(f"Finding optimized BLOSUM matches for {len(unmatched_sites)} unmatched sites")
+    
+    # Initialize results dictionary
+    blosum_matches = {}
+    
+    # Keep track of timing for performance monitoring
+    total_start_time = time.time()
+    
+    try:
+        # Process in smaller batches for better memory management
+        batch_size = 100
+        for i in range(0, len(unmatched_sites), batch_size):
+            batch = unmatched_sites[i:i+batch_size]
+            logger.info(f"Processing batch {i//batch_size + 1}/{(len(unmatched_sites) + batch_size - 1)//batch_size} with {len(batch)} sites")
+            batch_start_time = time.time()
+            
+            # Process each site in this batch
+            for site in batch:
+                
+                if 'motif' not in site or not site['motif'] or '_' in site['motif']:
+                    continue
+                    
+                site_name = site.get('site', '')
+                if not site_name:
+                    continue
+                
+                if site['is_known'] or (not site['is_known'] and site['surface_accessibility'] > 50):
+
+                    site_type = site_name[0] if site_name and site_name[0] in 'STY' else 'S'
+                    site_number = site_name[1:] if site_name else ''
+                    
+                    # Extract central motif (-4:+4) from the full motif
+                    # Only do this for the query motif since we don't have central_motif stored for it yet
+                    query_motif = site['motif']
+                    central_query_motif = extract_central_motif(query_motif, window_size=4)
+                    std_query_motif = standardize_motif(central_query_motif)
+                    
+
+                    # Skip if not exactly 9 characters (our expected motif length)
+                    if len(std_query_motif) != 9:
+                        logger.warning(f"Skipping site {site_name} with invalid motif length: {len(std_query_motif)}")
+                        continue
+                    
+                    # Extract trigrams for pre-filtering
+                    start_trigram = std_query_motif[0:3]
+                    middle_trigram = std_query_motif[3:6]
+                    end_trigram = std_query_motif[6:9]
+                    
+                    # Pre-filter potential matches using trigrams for speed
+                    # This query directly uses the central_motif column we added
+                    potential_matches_query = """
+                        SELECT PhosphositeID, uniprot_id, Residue_Number, Residue, central_motif
+                        FROM Phosphosite_Supplementary_Data
+                        WHERE central_motif IS NOT NULL
+                        AND LENGTH(central_motif) = 9
+                        AND (
+                            LEFT(central_motif, 3) = :start_trigram OR
+                            SUBSTRING(central_motif, 4, 3) = :middle_trigram OR
+                            RIGHT(central_motif, 3) = :end_trigram
+                        )
+                        AND `SITE_+/-7_AA` IS NOT NULL
+                        AND `SITE_+/-7_AA` NOT LIKE '%\\_%'
+                        AND `SITE_+/-7_AA` NOT LIKE '%?%'
+                        LIMIT 200000
+                    """
+                    
+                    # Execute query with trigram parameters
+                    df = execute_query(potential_matches_query, {
+                        "start_trigram": start_trigram,
+                        "middle_trigram": middle_trigram,
+                        "end_trigram": end_trigram
+                    })
+                    
+                    if df.empty:
+                        logger.info(f"No potential matches found for site {site_name}")
+                        continue
+                    
+                    logger.info(f"Found {len(df)} potential matches for site {site_name}")
+                    
+                    # Process potential matches
+                    site_matches = []
+                    # Process each potential match
+                    for _, row in df.iterrows():
+                        # Skip self-matches
+                        if (site.get('uniprot', '') == row['uniprot_id'] and 
+                            str(site.get('resno', '')) == str(row['Residue_Number'])):
+                            continue
+                        
+                        # Use the central_motif directly from the database - no need to extract again
+                        match_motif = row['central_motif'].upper()
+                        
+                        # Calculate BLOSUM score using cached function
+                        blosum_score = calculate_blosum62_score_cached(std_query_motif, match_motif)
+                        
+                        # Normalize to 0-1 range
+                        similarity = normalize_similarity_score(blosum_score)
+                        
+                        # Filter by minimum similarity
+                        if similarity >= min_similarity:
+                            # Determine site type from residue column
+                            residue_type = row['Residue'] if row['Residue'] in 'STY' else 'S'
+                            # Build match dictionary
+                            match_dict = {
+                                'target_id': row['PhosphositeID'], 'target_uniprot': row['uniprot_id'],
+                                'target_site': f"{residue_type}{row['Residue_Number']}", 'site_type': residue_type,
+                                'similarity': similarity, 'blosum_score': blosum_score, 'match_type': 'blosum'
+                            }
+                            site_matches.append(match_dict)
+                    
+                    # Sort by similarity (highest first)
+                    site_matches.sort(key=lambda x: x['similarity'], reverse=True)
+                    
+                    # Limit to top 50 matches
+                    site_matches = site_matches[:20]
+                    
+                    # Add to results if we found matches
+                    if site_matches:
+                        blosum_matches[site_name] = site_matches
+                        logger.info(f"Found {len(site_matches)} BLOSUM matches for site {site_name}")
+                    else:
+                        logger.info(f"No matching sites found for {site_name} after filtering")
+                else:
+                    logger.info(f"Skipping site {site_name} due to known status or low surface accessibility")
+            
+            batch_end_time = time.time()
+            logger.info(f"Batch processed in {batch_end_time - batch_start_time:.2f} seconds")
+        
+        total_end_time = time.time()
+        logger.info(f"All BLOSUM matches found in {total_end_time - total_start_time:.2f} seconds")
+        return blosum_matches
+    
+    except Exception as e:
+        logger.error(f"Error in batch BLOSUM matching: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {}
+
 def find_blosum_matches(query_motif: str, min_similarity: float = 0.4) -> List[Dict]:
     """
     Find matches based on BLOSUM62 scores with existing motifs in the database.
+    This is a legacy function kept for backward compatibility.
     
     Args:
         query_motif: Motif sequence to find matches for
@@ -180,254 +336,17 @@ def find_blosum_matches(query_motif: str, min_similarity: float = 0.4) -> List[D
     
     logger.info(f"Finding BLOSUM matches for motif: {query_motif}")
     
-    # Extract central -4:+4 region
-    central_query_motif = extract_central_motif(query_motif, window_size=4)
+    # Create a dummy site dictionary
+    dummy_site = {
+        'site': 'S0',
+        'motif': query_motif
+    }
     
-    # Standardize query motif
-    std_query_motif = standardize_motif(central_query_motif)
+    # Use the optimized batch function with a single site
+    results = find_blosum_matches_batch_optimized([dummy_site], min_similarity)
     
-    try:
-        # Fetch a batch of phosphosites from the database to compare against
-        # Limiting to a reasonable number to avoid excessive processing
-        # Need to implement a smart batching strategy here based on your database structure
-        from protein_explorer.db.db import execute_query
-        
-        # Query to get sites with valid motifs
-        query = """
-            SELECT PhosphositeID, uniprot_id, Residue_Number, `SITE_+/-7_AA` as motif
-            FROM Phosphosite_Supplementary_Data
-            WHERE `SITE_+/-7_AA` IS NOT NULL 
-            AND `SITE_+/-7_AA` NOT LIKE '%\\_%'
-            AND `SITE_+/-7_AA` NOT LIKE '%_%'
-            LIMIT 200000
-        """
-        
-        df = execute_query(query)
-        
-        if df.empty:
-            logger.warning("No phosphosites found in database for BLOSUM comparison")
-            return []
-        
-        logger.info(f"Found {len(df)} phosphosites in database for BLOSUM comparison")
-        
-        # Calculate BLOSUM scores for each potential match
-        matches = []
-        
-        for _, row in df.iterrows():
-            # Extract data
-            site_id = row['PhosphositeID']
-            uniprot_id = row['uniprot_id']
-            residue_number = row['Residue_Number']
-            motif = row['motif']
-            
-            # Skip if missing essential data
-            if not site_id or not uniprot_id or not residue_number or not motif:
-                continue
-            
-            # Extract central -4:+4 region
-            central_motif = extract_central_motif(motif, window_size=4)
-            
-            # Standardize comparison motif
-            std_motif = standardize_motif(central_motif)
-            
-            # Calculate BLOSUM62 score
-            blosum_score = calculate_blosum62_score(std_query_motif, std_motif)
-            
-            # Normalize to 0-1 range for compatibility with your similarity network
-            similarity = normalize_similarity_score(blosum_score)
-            
-            # Filter by minimum similarity
-            if similarity >= min_similarity:
-                # Determine site type from site_id or motif
-                site_type = 'S'  # Default to S if we can't determine
-                
-                # Try to extract from site_id
-                if '_' in site_id:
-                    residue_part = site_id.split('_')[1]
-                    if residue_part and len(residue_part) > 0:
-                        if residue_part[0] in 'STY':
-                            site_type = residue_part[0]
-                
-                # Build match dictionary with similar structure to your existing matches
-                match = {
-                    'target_id': site_id,
-                    'target_uniprot': uniprot_id,
-                    'target_site': f"{site_type}{residue_number}",
-                    'site_type': site_type,
-                    'similarity': similarity,
-                    'blosum_score': blosum_score,  # Include raw score for reference
-                    'motif': motif,
-                    'match_type': 'blosum'  # Flag to indicate this is a BLOSUM-based match
-                }
-                
-                matches.append(match)
-        
-        # Sort by similarity (highest first)
-        matches.sort(key=lambda x: x['similarity'], reverse=True)
-        
-        # Limit the number of matches to a reasonable number (e.g., top 50)
-        # Adjust this limit based on your application needs
-        matches = matches[:50]
-        
-        logger.info(f"Found {len(matches)} BLOSUM matches with similarity >= {min_similarity}")
-        
-        return matches
+    # Return the matches for the dummy site if found
+    if 'S0' in results and results['S0']:
+        return results['S0']
     
-    except Exception as e:
-        logger.error(f"Error finding BLOSUM matches: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return []
-
-def find_blosum_matches_batch(unmatched_sites: List[Dict], min_similarity: float = 0.4) -> Dict[str, List[Dict]]:
-    """
-    Find BLOSUM matches for multiple unmatched sites in batch.
-    
-    Args:
-        unmatched_sites: List of site dictionaries that don't have sequence matches
-        min_similarity: Minimum normalized similarity score (0-1)
-        
-    Returns:
-        Dictionary mapping site names to lists of match dictionaries
-    """
-    if not unmatched_sites:
-        return {}
-    
-    logger.info(f"Finding BLOSUM matches for {len(unmatched_sites)} unmatched sites")
-    
-    # Initialize results dictionary
-    blosum_matches = {}
-    
-    try:
-        # Fetch a batch of phosphosites from the database to compare against
-        from protein_explorer.db.db import execute_query
-        
-        # Simplified query - SQL syntax might be causing issues
-        # Adjusted to avoid potential SQL errors with escape sequences and wildcards
-        query = """
-            SELECT PhosphositeID, uniprot_id, Residue_Number, Residue, `SITE_+/-7_AA` as motif
-            FROM Phosphosite_Supplementary_Data
-            WHERE `SITE_+/-7_AA` IS NOT NULL 
-            LIMIT 200000
-        """
-        
-        df = execute_query(query)
-        
-        if df.empty:
-            logger.warning("No phosphosites found in database for BLOSUM comparison")
-            return {}
-        
-        logger.info(f"Found {len(df)} phosphosites in database for BLOSUM comparison")
-        
-        # Prepare database motifs for comparison - manually filter out ones with underscores
-        db_motifs = []
-        for _, row in df.iterrows():
-            site_id = row['PhosphositeID']
-            uniprot_id = row['uniprot_id']
-            residue_number = row['Residue_Number']
-            motif = row['motif'] if 'motif' in row else None
-            
-            # Get residue type, defaulting to S if not available
-            residue_type = 'S'
-            if 'Residue' in row and row['Residue'] and row['Residue'] in 'STY':
-                residue_type = row['Residue']
-            
-            # Skip if missing essential data or if motif contains underscore
-            if not site_id or not residue_number or not motif:
-                continue
-                
-            # Skip motifs with underscores
-            if '_' in motif:
-                continue
-
-            if not uniprot_id:
-                if '_' in site_id:
-                    uniprot_id = site_id.split('_')[0]
-            
-            # First extract just the central -4:+4 region (for +/-7 motifs)
-            central_motif = extract_central_motif(motif, window_size=4)
-            
-            # Then standardize for comparison
-            std_motif = standardize_motif(central_motif)
-            
-            db_motifs.append({
-                'site_id': site_id,
-                'uniprot_id': uniprot_id,
-                'residue_number': residue_number,
-                'residue_type': residue_type,
-                'motif': motif,
-                'std_motif': std_motif
-            })
-        
-        logger.info(f"Prepared {len(db_motifs)} database motifs for comparison")
-        
-        # Process each unmatched site
-        for site in unmatched_sites:
-            # Skip sites without motifs
-            if 'motif' not in site or not site['motif']:
-                continue
-            
-            # Get site info
-            site_name = site.get('site', '')
-            if not site_name:
-                continue
-            
-            site_type = site_name[0] if site_name and site_name[0] in 'STY' else 'S'
-            site_number = site_name[1:] if site_name else ''
-            
-            # Extract central -4:+4 region of query motif
-            query_motif = site['motif']
-            central_query_motif = extract_central_motif(query_motif, window_size=4)
-            
-            # Standardize for comparison
-            std_query_motif = standardize_motif(central_query_motif)
-            
-            # Calculate BLOSUM scores and find matches
-            site_matches = []
-            
-            for db_site in db_motifs:
-                # Skip self-matches (same uniprot and residue number)
-                if (site.get('uniprot', '') == db_site['uniprot_id'] and 
-                    str(site.get('resno', '')) == str(db_site['residue_number'])):
-                    continue
-                
-                # Calculate BLOSUM62 score
-                blosum_score = calculate_blosum62_score(std_query_motif, db_site['std_motif'])
-                
-                # Normalize to 0-1 range
-                similarity = normalize_similarity_score(blosum_score)
-                
-                # Filter by minimum similarity
-                if similarity >= min_similarity:
-                    # Build match dictionary
-                    match = {
-                        'target_id': db_site['site_id'],
-                        'target_uniprot': db_site['uniprot_id'],
-                        'target_site': f"{db_site['residue_type']}{db_site['residue_number']}",
-                        'site_type': db_site['residue_type'],
-                        'similarity': similarity,
-                        'blosum_score': blosum_score,
-                        'motif': db_site['motif'],
-                        'match_type': 'blosum'
-                    }
-                    
-                    site_matches.append(match)
-            
-            # Sort by similarity (highest first)
-            site_matches.sort(key=lambda x: x['similarity'], reverse=True)
-            
-            # Limit to top 50 matches
-            site_matches = site_matches[:50]
-            
-            # Add to results if we found matches
-            if site_matches:
-                blosum_matches[site_name] = site_matches
-                logger.info(f"Found {len(site_matches)} BLOSUM matches for site {site_name}")
-        
-        return blosum_matches
-    
-    except Exception as e:
-        logger.error(f"Error in batch BLOSUM matching: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return {}
+    return []

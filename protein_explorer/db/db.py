@@ -142,6 +142,16 @@ TABLES = {
             "Target": "idx_target"
         }
     },
+    "Sequence_Similarity_Edges_Full": {
+        "columns": [
+            "ID1", "ID2", "Similarity"
+        ],
+        "indexes": {
+            "ID1": "idx_id1_sim",
+            "ID2": "idx_id2_sim",
+            "Similarity": ["idx_id1_sim", "idx_id2_sim"]
+        }
+    },
     "Sequence_Similarity_Edges_4": {
         "columns": [
             "ID1", "ID2", "Similarity"
@@ -160,6 +170,29 @@ TABLES = {
             "ID1": "idx_id1_sim",
             "ID2": "idx_id2_sim",
             "Similarity": ["idx_id1_sim", "idx_id2_sim"]
+        }
+    }, 
+    "STY_Structural_Annotations": {
+        "id_column": "PhosphositeID",
+        "columns": [
+            "UniProtID", "ResidueNumber", "Site", "ResidueType", "Motif", 
+            "pLDDT", "NeighborCount", "ChainID", "SecondaryStructure", 
+            "SecondaryStructureDesc", "HydroxylExposure", "BackboneContacts", 
+            "HydrogenBonds", "MotifPLDDT", "SeqDistToHelix", "SpatialDistToHelix", 
+            "SeqDistToStrand", "SpatialDistToStrand", "SeqDistToTurn", 
+            "SpatialDistToTurn", "hydrophobic_count", "polar_count", 
+            "positive_count", "negative_count", "net_charge", "small_count", 
+            "medium_count", "large_count", "hydrophobic_ratio", "charged_ratio", 
+            "HSE_CA_U", "HSE_CA_D", "HSE_CA_RATIO", "HSE_CB_U", "HSE_CB_D", 
+            "HSE_CB_RATIO", "PhosphositeID"
+        ],
+        "indexes": {
+            "PhosphositeID": "PRIMARY",
+            "UniProtID": "idx_uniprot_residue",
+            "ResidueNumber": "idx_uniprot_residue",
+            "ResidueType": "idx_residue_type",
+            "pLDDT": "idx_plddt",
+            "SecondaryStructure": "idx_secondary_structure"
         }
     }
 }
@@ -202,14 +235,14 @@ QUERY_TEMPLATES = {
     """,
     
     "find_sequence_matches": """
-        SELECT * FROM `Sequence_Similarity_Edges_4`
+        SELECT * FROM `Sequence_Similarity_Edges_Full`
         WHERE (`ID1` = :site_id OR `ID2` = :site_id) AND `Similarity` >= :min_similarity
         ORDER BY `Similarity` DESC
         /* Uses indexes: idx_id1_sim and idx_id2_sim (composite) */
     """,
     
     "find_sequence_matches_batch": """
-        SELECT * FROM `Sequence_Similarity_Edges_4`
+        SELECT * FROM `Sequence_Similarity_Edges_Full`
         WHERE (`ID1` IN :site_ids OR `ID2` IN :site_ids) AND `Similarity` >= :min_similarity
         ORDER BY `Similarity` DESC
         /* Uses indexes: idx_id1_sim and idx_id2_sim (composite) */
@@ -261,7 +294,7 @@ QUERY_TEMPLATES = {
     """,
     
     "count_sequence_matches": """
-        SELECT COUNT(*) as count FROM `Sequence_Similarity_Edges_4`
+        SELECT COUNT(*) as count FROM `Sequence_Similarity_Edges_Full`
     """,
     
     "get_kinases_list": """
@@ -293,7 +326,7 @@ QUERY_TEMPLATES = {
     
     "get_top_similar_sites": """
         SELECT `ID1`, `ID2`, `Similarity` 
-        FROM `Sequence_Similarity_Edges_4`
+        FROM `Sequence_Similarity_Edges_Full`
         WHERE (`ID1` = :site_id OR `ID2` = :site_id)
         AND `Similarity` >= :min_similarity
         ORDER BY `Similarity` DESC
@@ -335,6 +368,52 @@ QUERY_TEMPLATES = {
         WHERE `Target` IN :target_ids AND `RMSD` <= :rmsd_threshold
         ORDER BY `RMSD` ASC
         /* Uses index: idx_target */
+    """, 
+    "get_structural_annotations": """
+        SELECT * FROM `STY_Structural_Annotations`
+        WHERE `PhosphositeID` = :site_id
+        /* Uses primary key */
+    """,
+
+    "get_structural_annotations_batch": """
+        SELECT * FROM `STY_Structural_Annotations`
+        WHERE `PhosphositeID` IN :site_ids
+        /* Uses primary key */
+    """,
+
+    "find_structural_annotations_by_uniprot": """
+        SELECT * FROM `STY_Structural_Annotations`
+        WHERE `UniProtID` = :uniprot_id
+        /* Uses index: idx_uniprot_residue */
+    """,
+
+    "find_structural_annotations_by_residue_type": """
+        SELECT * FROM `STY_Structural_Annotations`
+        WHERE `ResidueType` = :residue_type
+        /* Uses index: idx_residue_type */
+    """,
+
+    "find_high_quality_sites": """
+        SELECT * FROM `STY_Structural_Annotations`
+        WHERE `pLDDT` >= :min_plddt
+        ORDER BY `pLDDT` DESC
+        /* Uses index: idx_plddt */
+    """,
+
+    "find_sites_by_secondary_structure": """
+        SELECT * FROM `STY_Structural_Annotations`
+        WHERE `SecondaryStructure` = :structure_type
+        /* Uses index: idx_secondary_structure */
+    """,
+
+    "find_exposed_sites": """
+        SELECT * FROM `STY_Structural_Annotations`
+        WHERE `HydroxylExposure` >= :min_exposure
+        ORDER BY `HydroxylExposure` DESC
+    """,
+
+    "count_structural_annotations": """
+        SELECT COUNT(*) as count FROM `STY_Structural_Annotations`
     """
 }
 
@@ -529,7 +608,7 @@ def execute_batch_query(query_template: str, id_list: List[str], batch_size: int
             batch_size = BATCH_SIZES["phosphosites"]
         elif "Structural_Similarity_Edges" in query_template:
             batch_size = BATCH_SIZES["structural_matches"]
-        elif "Sequence_Similarity_Edges_4" in query_template:
+        elif "Sequence_Similarity_Edges_Full" in query_template:
             batch_size = BATCH_SIZES["sequence_matches"]
         elif "Kinase_Scores" in query_template:
             batch_size = BATCH_SIZES["kinase_scores"]
@@ -1578,6 +1657,329 @@ def find_structural_matches_by_target(target_id: str, rmsd_threshold: float = 5.
     except Exception as e:
         logger.error(f"Error finding structural matches by target: {e}")
         return []
+    
+
+def get_structural_annotations(site_id: str) -> Optional[Dict]:
+    """
+    Get structural annotations for a phosphosite.
+    Uses primary key for optimized lookup.
+    
+    Args:
+        site_id: Site ID in format 'UniProtID_ResidueNumber'
+        
+    Returns:
+        Dictionary with structural annotations or None if not found
+    """
+    # Check cache first
+    cache_key = f"structural_annotations_{site_id}"
+    if cache_key in QUERY_CACHE and is_cache_valid(cache_key):
+        PERFORMANCE_METRICS["cache_hits"] += 1
+        return QUERY_CACHE[cache_key]
+    
+    PERFORMANCE_METRICS["cache_misses"] += 1
+    
+    try:
+        query = QUERY_TEMPLATES["get_structural_annotations"]
+        df = execute_query(query, {"site_id": site_id})
+        
+        if df.empty:
+            logger.warning(f"No structural annotations found for {site_id}")
+            # Cache the negative result too
+            QUERY_CACHE[cache_key] = None
+            CACHE_TIMESTAMPS[cache_key] = time.time()
+            return None
+            
+        # Convert first row to dictionary
+        result = df.iloc[0].to_dict()
+        
+        # Ensure motif is uppercase if present
+        if 'Motif' in result and result['Motif']:
+            result['Motif'] = str(result['Motif']).upper()
+        
+        # Cache the result
+        QUERY_CACHE[cache_key] = result
+        CACHE_TIMESTAMPS[cache_key] = time.time()
+        
+        return result
+    except Exception as e:
+        logger.error(f"Error getting structural annotations: {e}")
+        return None
+
+def get_structural_annotations_batch(site_ids: List[str]) -> Dict[str, Dict]:
+    """
+    Get structural annotations for multiple sites in a batch.
+    Uses primary key for optimized lookup.
+    
+    Args:
+        site_ids: List of site IDs in format 'UniProtID_ResidueNumber'
+        
+    Returns:
+        Dictionary mapping site IDs to structural annotation dictionaries
+    """
+    if not site_ids:
+        return {}
+    
+    # Check cache first for all sites
+    cached_results = {}
+    missing_sites = []
+    
+    for site_id in site_ids:
+        cache_key = f"structural_annotations_{site_id}"
+        if cache_key in QUERY_CACHE and is_cache_valid(cache_key):
+            PERFORMANCE_METRICS["cache_hits"] += 1
+            cached_value = QUERY_CACHE[cache_key]
+            if cached_value is not None:  # Don't include None values
+                # Ensure motif is uppercase if present
+                if 'Motif' in cached_value and cached_value['Motif']:
+                    cached_value['Motif'] = str(cached_value['Motif']).upper()
+                cached_results[site_id] = cached_value
+        else:
+            PERFORMANCE_METRICS["cache_misses"] += 1
+            missing_sites.append(site_id)
+    
+    # If all results were in cache, return immediately
+    if not missing_sites:
+        return cached_results
+        
+    try:
+        # Use the batch helper function for missing sites
+        query = QUERY_TEMPLATES["get_structural_annotations_batch"]
+        df = execute_batch_query(
+            query, 
+            missing_sites, 
+            batch_size=BATCH_SIZES["phosphosites"],  # Use optimized batch size
+            id_param_name="site_ids"
+        )
+        
+        if not df.empty:
+            # Convert to dictionary of dictionaries
+            for _, row in df.iterrows():
+                row_dict = row.to_dict()
+                if "PhosphositeID" in row_dict:
+                    site_id = row_dict["PhosphositeID"]
+                    
+                    # Ensure motif is uppercase if present
+                    if 'Motif' in row_dict and row_dict['Motif']:
+                        row_dict['Motif'] = str(row_dict['Motif']).upper()
+                    
+                    # Add to results
+                    cached_results[site_id] = row_dict
+                    # Also update cache
+                    cache_key = f"structural_annotations_{site_id}"
+                    QUERY_CACHE[cache_key] = row_dict
+                    CACHE_TIMESTAMPS[cache_key] = time.time()
+        
+        # Cache negative results for missing sites
+        for site_id in missing_sites:
+            if site_id not in cached_results:
+                cache_key = f"structural_annotations_{site_id}"
+                QUERY_CACHE[cache_key] = None
+                CACHE_TIMESTAMPS[cache_key] = time.time()
+                
+        logger.info(f"Retrieved structural annotations for {len(cached_results)} out of {len(site_ids)} phosphosites")
+        return cached_results
+    except Exception as e:
+        logger.error(f"Error getting batch structural annotations: {e}")
+        return cached_results  # Return whatever was found in cache even if the rest failed
+
+def find_structural_annotations_by_uniprot(uniprot_id: str) -> List[Dict]:
+    """
+    Find all structural annotations for a given protein by UniProt ID.
+    Uses idx_uniprot_residue index for optimized lookup.
+    
+    Args:
+        uniprot_id: UniProt ID for the protein
+        
+    Returns:
+        List of dictionaries with structural annotation data
+    """
+    # Check cache first
+    cache_key = f"structural_annotations_by_uniprot_{uniprot_id}"
+    if cache_key in QUERY_CACHE and is_cache_valid(cache_key):
+        PERFORMANCE_METRICS["cache_hits"] += 1
+        return QUERY_CACHE[cache_key]
+    
+    PERFORMANCE_METRICS["cache_misses"] += 1
+    
+    try:
+        query = QUERY_TEMPLATES["find_structural_annotations_by_uniprot"]
+        df = execute_query(query, {"uniprot_id": uniprot_id})
+        
+        annotations = []
+        if not df.empty:
+            for _, row in df.iterrows():
+                row_dict = row.to_dict()
+                # Ensure motif is uppercase if present
+                if 'Motif' in row_dict and row_dict['Motif']:
+                    row_dict['Motif'] = str(row_dict['Motif']).upper()
+                annotations.append(row_dict)
+        
+        # Cache the result
+        QUERY_CACHE[cache_key] = annotations
+        CACHE_TIMESTAMPS[cache_key] = time.time()
+        
+        return annotations
+    except Exception as e:
+        logger.error(f"Error finding structural annotations for protein {uniprot_id}: {e}")
+        return []
+
+def find_high_quality_sites(min_plddt: float = 70.0, limit: int = 1000) -> List[Dict]:
+    """
+    Find phosphosites with high structural quality based on pLDDT score.
+    Uses idx_plddt index for optimized lookup.
+    
+    Args:
+        min_plddt: Minimum pLDDT score (higher is better quality)
+        limit: Maximum number of sites to return
+        
+    Returns:
+        List of dictionaries with high-quality site data
+    """
+    # Check cache first
+    cache_key = f"high_quality_sites_{min_plddt}_{limit}"
+    if cache_key in QUERY_CACHE and is_cache_valid(cache_key):
+        PERFORMANCE_METRICS["cache_hits"] += 1
+        return QUERY_CACHE[cache_key]
+    
+    PERFORMANCE_METRICS["cache_misses"] += 1
+    
+    try:
+        query = QUERY_TEMPLATES["find_high_quality_sites"] + f" LIMIT {limit}"
+        df = execute_query(query, {"min_plddt": min_plddt})
+        
+        sites = []
+        if not df.empty:
+            for _, row in df.iterrows():
+                row_dict = row.to_dict()
+                # Ensure motif is uppercase if present
+                if 'Motif' in row_dict and row_dict['Motif']:
+                    row_dict['Motif'] = str(row_dict['Motif']).upper()
+                sites.append(row_dict)
+        
+        # Cache the result
+        QUERY_CACHE[cache_key] = sites
+        CACHE_TIMESTAMPS[cache_key] = time.time()
+        
+        return sites
+    except Exception as e:
+        logger.error(f"Error finding high quality sites: {e}")
+        return []
+
+def find_sites_by_secondary_structure(structure_type: str) -> List[Dict]:
+    """
+    Find phosphosites by secondary structure type.
+    Uses idx_secondary_structure index for optimized lookup.
+    
+    Args:
+        structure_type: Secondary structure type (e.g., 'HELIX', 'STRAND', 'TURN')
+        
+    Returns:
+        List of dictionaries with site data
+    """
+    # Check cache first
+    cache_key = f"sites_by_structure_{structure_type}"
+    if cache_key in QUERY_CACHE and is_cache_valid(cache_key):
+        PERFORMANCE_METRICS["cache_hits"] += 1
+        return QUERY_CACHE[cache_key]
+    
+    PERFORMANCE_METRICS["cache_misses"] += 1
+    
+    try:
+        query = QUERY_TEMPLATES["find_sites_by_secondary_structure"]
+        df = execute_query(query, {"structure_type": structure_type})
+        
+        sites = []
+        if not df.empty:
+            for _, row in df.iterrows():
+                row_dict = row.to_dict()
+                # Ensure motif is uppercase if present
+                if 'Motif' in row_dict and row_dict['Motif']:
+                    row_dict['Motif'] = str(row_dict['Motif']).upper()
+                sites.append(row_dict)
+        
+        # Cache the result
+        QUERY_CACHE[cache_key] = sites
+        CACHE_TIMESTAMPS[cache_key] = time.time()
+        
+        return sites
+    except Exception as e:
+        logger.error(f"Error finding sites by secondary structure: {e}")
+        return []
+
+def find_exposed_sites(min_exposure: float = 0.5, limit: int = 1000) -> List[Dict]:
+    """
+    Find phosphosites with high solvent exposure.
+    
+    Args:
+        min_exposure: Minimum hydroxyl exposure value (0-1, higher is more exposed)
+        limit: Maximum number of sites to return
+        
+    Returns:
+        List of dictionaries with exposed site data
+    """
+    # Check cache first
+    cache_key = f"exposed_sites_{min_exposure}_{limit}"
+    if cache_key in QUERY_CACHE and is_cache_valid(cache_key):
+        PERFORMANCE_METRICS["cache_hits"] += 1
+        return QUERY_CACHE[cache_key]
+    
+    PERFORMANCE_METRICS["cache_misses"] += 1
+    
+    try:
+        query = QUERY_TEMPLATES["find_exposed_sites"] + f" LIMIT {limit}"
+        df = execute_query(query, {"min_exposure": min_exposure})
+        
+        sites = []
+        if not df.empty:
+            for _, row in df.iterrows():
+                row_dict = row.to_dict()
+                # Ensure motif is uppercase if present
+                if 'Motif' in row_dict and row_dict['Motif']:
+                    row_dict['Motif'] = str(row_dict['Motif']).upper()
+                sites.append(row_dict)
+        
+        # Cache the result
+        QUERY_CACHE[cache_key] = sites
+        CACHE_TIMESTAMPS[cache_key] = time.time()
+        
+        return sites
+    except Exception as e:
+        logger.error(f"Error finding exposed sites: {e}")
+        return []
+
+def get_integrated_site_data(site_id: str) -> Dict:
+    """
+    Get comprehensive data for a site by combining phosphosite data with structural annotations.
+    
+    Args:
+        site_id: Site ID in format 'UniProtID_ResidueNumber'
+        
+    Returns:
+        Integrated dictionary with all site data
+    """
+    # Get phosphosite data
+    phosphosite_data = get_phosphosite_data(site_id)
+    
+    # Get structural annotations
+    structural_data = get_structural_annotations(site_id)
+    
+    # Create integrated data dictionary
+    integrated_data = {}
+    
+    # Add phosphosite data if available
+    if phosphosite_data:
+        integrated_data.update(phosphosite_data)
+    
+    # Add structural data if available (will overwrite duplicate keys)
+    if structural_data:
+        # Add a prefix to structural keys to avoid confusion with duplicate keys
+        for key, value in structural_data.items():
+            if key in integrated_data and key not in ['UniProtID', 'ResidueNumber', 'PhosphositeID']:
+                integrated_data[f"struct_{key}"] = value
+            else:
+                integrated_data[key] = value
+    
+    return integrated_data
 
 def clear_cache():
     """Clear the query cache."""

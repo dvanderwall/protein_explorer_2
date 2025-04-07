@@ -489,15 +489,14 @@ def analyze_phosphosite_context(structure_data, site_number, site_type):
     from Bio.PDB import PDBParser, NeighborSearch, Selection, Vector
     import io
     import numpy as np
-    
+    print("a")
     # Parse the PDB structure
     parser = PDBParser(QUIET=True)
     structure = parser.get_structure("protein", io.StringIO(structure_data))
-    
+    print("b")
     # Get all atoms
     all_atoms = list(structure.get_atoms())
     ns = NeighborSearch(all_atoms)
-    
     # Find the target residue
     target_residue = None
     for model in structure:
@@ -506,23 +505,19 @@ def analyze_phosphosite_context(structure_data, site_number, site_type):
                 if residue.get_id()[1] == site_number:
                     target_residue = residue
                     break
-    
     if not target_residue:
         return {"error": f"Site {site_type}{site_number} not found in structure"}
-    
     # Get center atom for the residue (CA or first atom)
     if 'CA' in target_residue:
         center_atom = target_residue['CA']
     else:
         # Use the first atom if CA not available
         center_atom = next(target_residue.get_atoms())
-    
     # Get the residue coordinates
     center_coords = center_atom.get_coord()
     
     # Find nearby residues (8Å radius)
-    nearby_atoms = ns.search(center_coords, 8.0)
-    
+    nearby_atoms = ns.search(center_coords, 10.0)
     # Group nearby atoms by residue
     nearby_residues = {}
     for atom in nearby_atoms:
@@ -553,13 +548,11 @@ def analyze_phosphosite_context(structure_data, site_number, site_type):
         # Update minimum distance
         if dist < nearby_residues[resno]["min_distance"]:
             nearby_residues[resno]["min_distance"] = dist
-            
     # Sort nearby residues by distance
     sorted_nearby = sorted(
         nearby_residues.items(), 
         key=lambda x: x[1]["min_distance"]
     )
-    
     # Prepare results
     nearby_info = [
         {
@@ -587,34 +580,33 @@ def analyze_phosphosite_context(structure_data, site_number, site_type):
                 if data["resname"] in residues:
                     contact_counts[group] += 1
                     break
-                    
     # Calculate secondary structure
-    try:
-        from Bio.PDB.DSSP import DSSP
-        model = structure[0]  # Use first model
-        dssp = DSSP(model, io.StringIO(structure_data))
+    #try:
+    #    from Bio.PDB.DSSP import DSSP
+    #    model = structure[0]  # Use first model
+    #    dssp = DSSP(model, io.StringIO(structure_data))
         
         # Get DSSP data for the target residue
-        chain_id = list(model.child_dict.keys())[0]  # Get first chain ID
-        dssp_key = (chain_id, site_number)
+    #    chain_id = list(model.child_dict.keys())[0]  # Get first chain ID
+    #    dssp_key = (chain_id, site_number)
         
-        if dssp_key in dssp:
+    #    if dssp_key in dssp:
             # DSSP assigns: H (alpha helix), B (beta bridge), E (strand),
             # G (3-10 helix), I (pi helix), T (turn), S (bend), or - (other)
-            ss_code = dssp[dssp_key][1]
+    #        ss_code = dssp[dssp_key][1]
             
             # Simplify to three main categories
-            if ss_code in ['H', 'G', 'I']:
-                secondary_structure = 'Helix'
-            elif ss_code in ['E', 'B']:
-                secondary_structure = 'Sheet'
-            else:
-                secondary_structure = 'Loop'
-        else:
-            secondary_structure = 'Unknown'
-    except:
+    #        if ss_code in ['H', 'G', 'I']:
+    #            secondary_structure = 'Helix'
+    #        elif ss_code in ['E', 'B']:
+    #            secondary_structure = 'Sheet'
+    #        else:
+    #            secondary_structure = 'Loop'
+    #    else:
+    #        secondary_structure = 'Unknown'
+    #except:
         # If DSSP fails, leave as unknown
-        secondary_structure = 'Unknown'
+    #    secondary_structure = 'Unknown'
     
     # Calculate solvent accessibility
     # We'll use a simple proxy based on neighbor count
@@ -626,13 +618,12 @@ def analyze_phosphosite_context(structure_data, site_number, site_type):
     # Extract B-factor (pLDDT in AlphaFold) for the target residue
     b_factors = [atom.get_bfactor() for atom in target_residue]
     mean_plddt = sum(b_factors) / len(b_factors) if b_factors else None
-    
     return {
         "site": f"{site_type}{site_number}",
         "nearby_residues": nearby_info[:10],  # Show top 10
         "nearby_count": len(nearby_info),
         "contact_distribution": contact_counts,
-        "secondary_structure": secondary_structure,
+        #"secondary_structure": secondary_structure,
         "solvent_accessibility": round(solvent_accessibility, 1),
         "plddt": round(mean_plddt, 1) if mean_plddt else None
     }

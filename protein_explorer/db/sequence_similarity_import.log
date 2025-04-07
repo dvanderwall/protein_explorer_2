@@ -1,0 +1,26 @@
+2025-04-07 15:34:51,172 - __main__ - INFO - Starting table build process
+2025-04-07 15:34:51,172 - __main__ - INFO - Trying sqlalchemy with mysql-connector connection...
+2025-04-07 15:34:51,172 - __main__ - INFO - Trying sqlalchemy with mysqlclient connection...
+2025-04-07 15:34:51,172 - __main__ - INFO - Trying sqlalchemy with pymysql connection...
+2025-04-07 15:34:51,172 - __main__ - INFO - Trying direct mysql-connector connection...
+2025-04-07 15:34:51,172 - __main__ - INFO - Trying direct mysqlclient connection...
+2025-04-07 15:34:51,172 - __main__ - ERROR - Could not connect with any available MySQL driver
+2025-04-07 15:34:51,172 - __main__ - ERROR - Failed to initialize database connection
+2025-04-07 15:34:51,172 - __main__ - ERROR - Script failed
+2025-04-07 15:36:20,417 - __main__ - INFO - Starting table build process
+2025-04-07 15:36:20,417 - __main__ - INFO - Trying sqlalchemy with mysql-connector connection...
+2025-04-07 15:36:20,954 - mysql.connector - INFO - package: mysql.connector.plugins
+2025-04-07 15:36:20,954 - mysql.connector - INFO - plugin_name: caching_sha2_password
+2025-04-07 15:36:20,954 - mysql.connector - INFO - AUTHENTICATION_PLUGIN_CLASS: MySQLCachingSHA2PasswordAuthPlugin
+2025-04-07 15:36:21,282 - __main__ - INFO - Successfully connected using sqlalchemy with mysql-connector
+2025-04-07 15:36:21,338 - __main__ - ERROR - Error executing query with SQLAlchemy: (mysql.connector.errors.ProgrammingError) 1146 (42S02): Table 'kinoplex-db.Sequence_Similarity_Edges_Full' doesn't exist
+[SQL: SELECT COUNT(*) as count FROM `Sequence_Similarity_Edges_Full`]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+2025-04-07 15:36:21,431 - __main__ - INFO - Sequence_Similarity_Edges_Full table created or already exists
+2025-04-07 15:36:21,431 - __main__ - INFO - Reading data from feather file...
+2025-04-07 15:36:21,431 - __main__ - INFO - Reading feather file using pyarrow.feather: C:/Users/mz30/Downloads/Motif_Similarity_Blosum62_Filtered_0.25_cutoff.feather
+2025-04-07 15:37:02,386 - __main__ - INFO - Importing 72354488 rows...
+2025-04-07 15:37:02,556 - __main__ - INFO - Truncated existing table
+2025-04-07 15:37:02,557 - __main__ - INFO - Starting import of 72354488 rows in 14471 batches
+2025-04-07 15:40:37,193 - __main__ - INFO - Imported batch 1/14471 (5000 rows) in 214.64 seconds
+2025-04-07 15:40:41,081 - __main__ - INFO - Script interrupted by user

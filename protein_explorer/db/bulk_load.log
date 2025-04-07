@@ -1,0 +1,41 @@
+2025-04-07 15:44:05,228 - __main__ - INFO - Starting bulk loading process
+2025-04-07 15:44:05,228 - __main__ - INFO - Converting feather file to CSV: C:/Users/mz30/Downloads/Motif_Similarity_Blosum62_Filtered_0.25_cutoff.feather
+2025-04-07 15:44:40,737 - __main__ - INFO - Writing data to CSV: C:/Users/mz30/Downloads/temp_similarity_data.csv
+2025-04-07 15:48:13,515 - __main__ - INFO - Successfully converted 72354488 rows to CSV
+2025-04-07 15:48:15,874 - mysql.connector - INFO - package: mysql.connector.plugins
+2025-04-07 15:48:15,874 - mysql.connector - INFO - plugin_name: caching_sha2_password
+2025-04-07 15:48:15,877 - mysql.connector - INFO - AUTHENTICATION_PLUGIN_CLASS: MySQLCachingSHA2PasswordAuthPlugin
+2025-04-07 15:48:15,919 - __main__ - INFO - Connected to MySQL using mysql.connector
+2025-04-07 15:48:15,963 - __main__ - INFO - Table exists with 5000 rows
+2025-04-07 15:48:25,894 - __main__ - INFO - Dropping table...
+2025-04-07 15:48:25,934 - __main__ - INFO - Creating table...
+2025-04-07 15:48:25,968 - __main__ - INFO - Table doesn't exist yet: 'MySQLCursor' object has no attribute 'connection'
+2025-04-07 15:48:25,969 - __main__ - INFO - Creating table...
+2025-04-07 15:48:25,985 - __main__ - ERROR - Error during bulk load: 'MySQLCursor' object has no attribute 'connection'
+2025-04-07 15:48:25,986 - __main__ - WARNING - Bulk load failed using Python, trying direct mysql command...
+2025-04-07 15:48:25,986 - __main__ - INFO - Attempting to use mysql command-line client...
+2025-04-07 15:48:25,989 - __main__ - INFO - Executing: mysql --host=35.245.113.195 --user=root --password=@Bismark6 --port=3306 --database=kinoplex-db --local-infile=1 --execute=source C:/Users/mz30/Downloads/load_data.sql
+2025-04-07 15:48:26,013 - __main__ - ERROR - Error executing MySQL command: [WinError 2] The system cannot find the file specified
+2025-04-07 15:48:26,014 - __main__ - ERROR - All bulk load methods failed
+2025-04-07 15:48:26,016 - __main__ - ERROR - Script failed
+2025-04-07 16:04:02,219 - __main__ - INFO - Starting bulk loading process
+2025-04-07 16:04:02,219 - __main__ - INFO - Using existing CSV file: C:/Users/mz30/Downloads/temp_similarity_data.csv
+2025-04-07 16:04:02,402 - mysql.connector - INFO - package: mysql.connector.plugins
+2025-04-07 16:04:02,402 - mysql.connector - INFO - plugin_name: caching_sha2_password
+2025-04-07 16:04:02,402 - mysql.connector - INFO - AUTHENTICATION_PLUGIN_CLASS: MySQLCachingSHA2PasswordAuthPlugin
+2025-04-07 16:04:02,455 - __main__ - INFO - Connected to MySQL using mysql.connector
+2025-04-07 16:04:02,488 - __main__ - INFO - Table exists with 0 rows
+2025-04-07 16:04:09,020 - __main__ - INFO - Dropping table...
+2025-04-07 16:04:09,069 - __main__ - INFO - Creating table...
+2025-04-07 16:04:09,105 - __main__ - INFO - Table doesn't exist yet: 'MySQLCursor' object has no attribute 'connection'
+2025-04-07 16:04:09,105 - __main__ - INFO - Creating table...
+2025-04-07 16:04:09,122 - __main__ - ERROR - Error during bulk load: 'MySQLCursor' object has no attribute 'connection'
+2025-04-07 16:04:09,122 - __main__ - WARNING - Bulk load failed using Python, trying direct mysql command...
+2025-04-07 16:04:09,123 - __main__ - INFO - Attempting to use mysql command-line client...
+2025-04-07 16:04:09,125 - __main__ - INFO - Executing: mysql --host=35.245.113.195 --user=root --password=@Bismark6 --port=3306 --database=kinoplex-db --local-infile=1 --execute=source C:/Users/mz30/Downloads/load_data.sql
+2025-04-07 16:22:49,335 - __main__ - INFO - MySQL command executed successfully
+2025-04-07 16:22:49,335 - __main__ - INFO - Output: COUNT(*)
+36177244
+
+2025-04-07 16:22:49,336 - __main__ - INFO - Bulk load completed successfully using mysql command
+2025-04-07 16:22:49,337 - __main__ - INFO - Script completed successfully

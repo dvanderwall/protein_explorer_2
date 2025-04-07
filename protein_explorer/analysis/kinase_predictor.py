@@ -8,27 +8,72 @@ import numpy as np
 from typing import Dict, List, Optional, Union
 import logging
 
-# Import database module
-from protein_explorer.db import get_kinase_scores, get_kinase_scores_batch
-
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def load_kinase_scores(file_path: str = None, score_type: str = 'structure') -> bool:
+# Global variables to store loaded data
+STRUCTURE_KINASE_SCORES = None
+SEQUENCE_KINASE_SCORES = None
+
+def load_kinase_scores(file_path: str = None, score_type: str = 'structure') -> pd.DataFrame:
     """
-    Load kinase scores from the database.
+    Load kinase scores from the specified file.
     
     Args:
-        file_path: Parameter kept for backward compatibility but not used
+        file_path: Path to the kinase scores file (feather format)
         score_type: Type of scores - 'structure' or 'sequence'
         
     Returns:
-        Boolean indicating if scores can be accessed
+        Pandas DataFrame with kinase scores
     """
-    # This function is kept for backward compatibility but now uses the database
-    logger.info(f"Using database for {score_type} kinase scores")
-    return True
+    global STRUCTURE_KINASE_SCORES, SEQUENCE_KINASE_SCORES
+    
+    # Use the correct global variable based on score_type
+    if score_type.lower() == 'structure':
+        if STRUCTURE_KINASE_SCORES is not None:
+            logger.info("Using cached structure kinase scores")
+            return STRUCTURE_KINASE_SCORES
+    else:
+        if SEQUENCE_KINASE_SCORES is not None:
+            logger.info("Using cached sequence kinase scores")
+            return SEQUENCE_KINASE_SCORES
+    
+    # Find the file if path not provided
+    if file_path is None:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        parent_dir = os.path.dirname(os.path.dirname(current_dir))
+        
+        if score_type.lower() == 'structure':
+            file_path = os.path.join(parent_dir, 'Structure_Kinase_Scores.feather')
+        else:
+            file_path = os.path.join(parent_dir, 'Sequence_Kinase_Scores.feather')
+    
+    try:
+        # Load the data
+        logger.info(f"Loading {score_type} kinase scores from: {file_path}")
+        scores_df = pd.read_feather(file_path)
+        
+        # Ensure the site ID column exists
+        if 'site_id' not in scores_df.columns and scores_df.columns[0] != 'site_id':
+            # Assume first column is the site ID
+            scores_df = scores_df.rename(columns={scores_df.columns[0]: 'site_id'})
+        
+        # Create an index for faster lookups
+        scores_df.set_index('site_id', inplace=True)
+        
+        # Store in the appropriate global variable
+        if score_type.lower() == 'structure':
+            STRUCTURE_KINASE_SCORES = scores_df
+            logger.info(f"Loaded {len(scores_df)} structure kinase scores")
+        else:
+            SEQUENCE_KINASE_SCORES = scores_df
+            logger.info(f"Loaded {len(scores_df)} sequence kinase scores")
+        
+        return scores_df
+    except Exception as e:
+        logger.error(f"Error loading {score_type} kinase scores: {e}")
+        return pd.DataFrame()
 
 def get_site_kinase_scores(site_id: str, score_type: str = 'structure') -> Dict:
     """
@@ -41,13 +86,46 @@ def get_site_kinase_scores(site_id: str, score_type: str = 'structure') -> Dict:
     Returns:
         Dictionary with kinase names as keys and scores as values
     """
-    scores_data = get_kinase_scores(site_id, score_type)
+    # Load the data if not already loaded
+    scores_df = load_kinase_scores(score_type=score_type)
     
-    if not scores_data:
-        logger.warning(f"No {score_type} kinase scores available for {site_id}")
+    if scores_df.empty:
+        logger.warning(f"No {score_type} kinase scores available")
         return {}
     
-    return scores_data
+    try:
+        # Get scores for the specific site
+        if site_id in scores_df.index:
+            site_scores = scores_df.loc[site_id]
+            
+            # Convert to dictionary, excluding the 'known_kinase' column if it exists
+            scores_dict = {}
+            for col in site_scores.index:
+                if col != 'known_kinase':
+                    # Make sure we convert all values to float
+                    try:
+                        value = site_scores[col]
+                        if pd.notna(value):  # Check if not NaN
+                            scores_dict[col] = float(value)
+                        else:
+                            scores_dict[col] = 0.0
+                    except (ValueError, TypeError):
+                        # Skip values that can't be converted to float
+                        logger.warning(f"Skipping non-numeric value for kinase {col}: {site_scores[col]}")
+            
+            # Check if site has a known kinase
+            known_kinase = site_scores.get('known_kinase', 'unlabeled')
+            
+            return {
+                'known_kinase': known_kinase,
+                'scores': scores_dict
+            }
+        else:
+            logger.warning(f"Site {site_id} not found in {score_type} kinase scores")
+            return {}
+    except Exception as e:
+        logger.error(f"Error getting {score_type} kinase scores for {site_id}: {e}")
+        return {}
 
 def predict_kinases(site_id: str, top_n: int = 5, score_type: str = 'structure') -> List[Dict]:
     """
@@ -70,6 +148,17 @@ def predict_kinases(site_id: str, top_n: int = 5, score_type: str = 'structure')
     
     # Get all kinase scores
     scores = site_data['scores']
+    
+    # Convert any string scores to float
+    for kinase, score in list(scores.items()):
+        try:
+            if isinstance(score, str):
+                # Try to convert string to float
+                scores[kinase] = float(score)
+        except (ValueError, TypeError):
+            # If conversion fails, remove this item
+            logger.warning(f"Removing non-numeric score for kinase {kinase}: {score}")
+            del scores[kinase]
     
     # Sort by score (descending)
     sorted_scores = sorted(scores.items(), key=lambda x: float(x[1]), reverse=True)
@@ -117,13 +206,10 @@ def compare_kinase_scores(site_ids: List[str], top_n: int = 5, score_type: str =
         'data': {}
     }
     
-    # Get all site scores in a batch query
-    batch_scores = get_kinase_scores_batch(site_ids, score_type)
-    
     # Add scores for each site and kinase
     for site_id in site_ids:
         comparison['data'][site_id] = {}
-        site_data = batch_scores.get(site_id, {})
+        site_data = get_site_kinase_scores(site_id, score_type)
         
         if site_data and 'scores' in site_data:
             scores = site_data['scores']
@@ -147,61 +233,55 @@ def get_heatmap_data(site_ids: List[str], top_n: int = 10, score_type: str = 'st
     if not site_ids:
         return {}
     
-    # Get all site data in a single batch query
-    batch_scores = get_kinase_scores_batch(site_ids, score_type)
+    # Load the data if not already loaded
+    scores_df = load_kinase_scores(score_type=score_type)
     
-    if not batch_scores:
+    if scores_df.empty:
         logger.warning(f"No {score_type} kinase scores available")
         return {}
     
     try:
         # Get data for the specified sites
-        sites_data = []
-        for site_id in site_ids:
-            if site_id in batch_scores and 'scores' in batch_scores[site_id]:
-                # Add this site's scores to our dataset
-                site_scores = batch_scores[site_id]['scores']
-                sites_data.append((site_id, site_scores))
+        sites_data = scores_df.loc[scores_df.index.isin(site_ids)]
         
-        if not sites_data:
+        if sites_data.empty:
             logger.warning(f"None of the specified sites found in {score_type} kinase scores")
             return {}
         
-        # Convert to a combined dictionary
-        combined_scores = {}
-        for site_id, scores in sites_data:
-            for kinase, score in scores.items():
-                if kinase not in combined_scores:
-                    combined_scores[kinase] = []
-                combined_scores[kinase].append(score)
+        # Exclude 'known_kinase' column if it exists
+        if 'known_kinase' in sites_data.columns:
+            kinase_columns = [col for col in sites_data.columns if col != 'known_kinase']
+        else:
+            kinase_columns = list(sites_data.columns)
+        
+        # Convert all score columns to numeric, coercing errors to NaN
+        for col in kinase_columns:
+            sites_data[col] = pd.to_numeric(sites_data[col], errors='coerce')
+        
+        # Replace NaN with 0
+        sites_data = sites_data.fillna(0)
         
         # Calculate mean score for each kinase across all sites
-        mean_scores = {}
-        for kinase, scores in combined_scores.items():
-            mean_scores[kinase] = sum(scores) / len(scores)
+        mean_scores = sites_data[kinase_columns].mean()
         
         # Get top N kinases by mean score
-        top_kinases = sorted(mean_scores.items(), key=lambda x: x[1], reverse=True)[:top_n]
-        top_kinase_names = [k[0] for k in top_kinases]
+        top_kinases = mean_scores.sort_values(ascending=False).head(top_n).index.tolist()
         
         # Prepare heatmap data
         heatmap_data = {
-            'sites': site_ids,
-            'kinases': top_kinase_names,
+            'sites': list(sites_data.index),
+            'kinases': top_kinases,
             'scores': []
         }
         
         # Add scores for each site and kinase
-        for site_id in site_ids:
-            if site_id in batch_scores and 'scores' in batch_scores[site_id]:
-                site_scores = batch_scores[site_id]['scores']
-                for kinase in top_kinase_names:
-                    score = site_scores.get(kinase, 0)
-                    heatmap_data['scores'].append({
-                        'site': site_id,
-                        'kinase': kinase,
-                        'score': float(score)
-                    })
+        for site in sites_data.index:
+            for kinase in top_kinases:
+                heatmap_data['scores'].append({
+                    'site': site,
+                    'kinase': kinase,
+                    'score': float(sites_data.loc[site, kinase])
+                })
         
         return heatmap_data
     except Exception as e:
