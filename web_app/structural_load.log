@@ -1,0 +1,33 @@
+2025-04-07 16:44:10,978 - __main__ - INFO - Starting bulk loading process for structural annotations
+2025-04-07 16:44:10,978 - __main__ - INFO - Reading CSV file: C:/Users/mz30/protein_explorer/protein_explorer/precomputing_data/STY_Structural_Annotations.csv
+2025-04-07 16:44:32,441 - __main__ - INFO - CSV columns: ['UniProtID', 'ResidueNumber', 'Site', 'ResidueType', 'Motif', 'pLDDT', 'NeighborCount', 'ChainID', 'SecondaryStructure', 'SecondaryStructureDesc', 'HydroxylExposure', 'BackboneContacts', 'HydrogenBonds', 'MotifPLDDT', 'SeqDistToHelix', 'SpatialDistToHelix', 'SeqDistToStrand', 'SpatialDistToStrand', 'SeqDistToTurn', 'SpatialDistToTurn', 'SeqDistToCoil', 'SpatialDistToCoil', 'hydrophobic_count', 'polar_count', 'positive_count', 'negative_count', 'net_charge', 'small_count', 'medium_count', 'large_count', 'hydrophobic_ratio', 'charged_ratio', 'dist_to_A', 'dist_to_C', 'dist_to_D', 'dist_to_E', 'dist_to_F', 'dist_to_G', 'dist_to_H', 'dist_to_I', 'dist_to_K', 'dist_to_L', 'dist_to_M', 'dist_to_N', 'dist_to_P', 'dist_to_Q', 'dist_to_R', 'dist_to_S', 'dist_to_T', 'dist_to_V', 'dist_to_W', 'dist_to_Y', 'dist_to_hydrophobic', 'dist_to_polar', 'dist_to_charged', 'dist_to_acidic', 'dist_to_basic', 'dist_to_small', 'dist_to_medium', 'dist_to_large', 'num_A_10A', 'num_C_10A', 'num_D_10A', 'num_E_10A', 'num_F_10A', 'num_G_10A', 'num_H_10A', 'num_I_10A', 'num_K_10A', 'num_L_10A', 'num_M_10A', 'num_N_10A', 'num_P_10A', 'num_Q_10A', 'num_R_10A', 'num_S_10A', 'num_T_10A', 'num_V_10A', 'num_W_10A', 'num_Y_10A', 'num_hydrophobic_10A', 'num_polar_10A', 'num_charged_10A', 'num_acidic_10A', 'num_basic_10A', 'num_small_10A', 'num_medium_10A', 'num_large_10A', 'HSE_CA_U', 'HSE_CA_D', 'HSE_CA_RATIO', 'HSE_CB_U', 'HSE_CB_D', 'HSE_CB_RATIO']
+2025-04-07 16:44:32,445 - __main__ - INFO - CSV rows: 1756412
+2025-04-07 16:44:33,957 - __main__ - INFO - Created PhosphositeID column
+2025-04-07 16:44:34,928 - __main__ - INFO - Writing prepared data to: C:/Users/mz30/protein_explorer/protein_explorer/precomputing_data/temp_structural_data.csv
+2025-04-07 16:46:06,673 - __main__ - INFO - Successfully prepared 1756412 rows for import
+2025-04-07 16:46:07,017 - __main__ - INFO - Connected to MySQL using pymysql
+2025-04-07 16:46:07,094 - __main__ - INFO - Table created successfully with appropriate indexes
+2025-04-07 16:46:07,094 - __main__ - INFO - Disabling keys for faster loading...
+2025-04-07 16:46:07,150 - __main__ - ERROR - Error during bulk load: (1227, 'Access denied; you need (at least one of) the SUPER or SYSTEM_VARIABLES_ADMIN privilege(s) for this operation')
+2025-04-07 16:46:07,151 - __main__ - ERROR - Script failed
+2025-04-07 16:50:41,445 - __main__ - INFO - Starting bulk loading process
+2025-04-07 16:50:41,445 - __main__ - INFO - Using existing prepared CSV file: C:/Users/mz30/protein_explorer/protein_explorer/precomputing_data/temp_structural_data.csv
+2025-04-07 16:50:41,714 - mysql.connector - INFO - package: mysql.connector.plugins
+2025-04-07 16:50:41,714 - mysql.connector - INFO - plugin_name: caching_sha2_password
+2025-04-07 16:50:41,714 - mysql.connector - INFO - AUTHENTICATION_PLUGIN_CLASS: MySQLCachingSHA2PasswordAuthPlugin
+2025-04-07 16:50:41,760 - __main__ - INFO - Connected to MySQL using mysql.connector
+2025-04-07 16:50:41,798 - __main__ - INFO - Table exists with 0 rows
+2025-04-07 16:50:45,813 - __main__ - INFO - Dropping table...
+2025-04-07 16:50:45,849 - __main__ - INFO - Creating table...
+2025-04-07 16:50:45,898 - __main__ - INFO - Table doesn't exist yet: 'MySQLCursor' object has no attribute 'connection'
+2025-04-07 16:50:45,898 - __main__ - INFO - Creating table...
+2025-04-07 16:50:45,919 - __main__ - ERROR - Error during bulk load: 'MySQLCursor' object has no attribute 'connection'
+2025-04-07 16:50:45,919 - __main__ - WARNING - Bulk load failed using Python, trying direct mysql command...
+2025-04-07 16:50:45,920 - __main__ - INFO - Attempting to use mysql command-line client...
+2025-04-07 16:50:45,923 - __main__ - INFO - Executing: mysql --host=35.245.113.195 --user=root --password=@Bismark6 --port=3306 --database=kinoplex-db --local-infile=1 --execute=source C:/Users/mz30/protein_explorer/protein_explorer/precomputing_data/load_structural_data.sql
+2025-04-07 16:53:00,466 - __main__ - INFO - MySQL command executed successfully
+2025-04-07 16:53:00,467 - __main__ - INFO - Output: COUNT(*)
+1756412
+
+2025-04-07 16:53:00,467 - __main__ - INFO - Bulk load completed successfully using mysql command
+2025-04-07 16:53:00,469 - __main__ - INFO - Script completed successfully

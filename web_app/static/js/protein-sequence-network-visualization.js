@@ -549,7 +549,7 @@ function extractSequenceNetworkData(proteinUniprotId) {
                                 
                                 // Get similarity and validate
                                 const similarity = parseFloat(match.similarity || 0);
-                                if (similarity < 0.4) continue;
+                                if (similarity < 0.0) continue;
                                 
                                 const targetId = match.target_id;
                                 const targetUniprot = match.target_uniprot;
@@ -595,8 +595,8 @@ function extractSequenceNetworkData(proteinUniprotId) {
                                     
                                     const targetNode = {
                                         id: targetId,
-                                        name: targetSite || 'Unknown',
-                                        uniprot: targetUniprot || 'Unknown',
+                                        name: match.target_site || 'Unknown',
+                                        uniprot: match.target_uniprot || 'Unknown',
                                         // Keep 'match' type even if it's the same protein
                                         type: 'match',
                                         is_known: match.is_known === true || match.is_known === 1,

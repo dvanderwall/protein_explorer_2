@@ -20,6 +20,7 @@ import re
 import json
 from typing import Dict, List, Optional
 import shutil
+import math
 
 
 
@@ -29,7 +30,8 @@ import protein_explorer as pe
 
 from protein_explorer.data.scaffold import (
     get_uniprot_id_from_gene,
-    get_protein_by_id
+    get_protein_by_id, 
+    get_alphafold_structure
 )
 
 
@@ -619,7 +621,7 @@ def phosphosite_analysis():
     
     # Import enhanced table function
     from protein_explorer.analysis.enhanced_table import enhance_phosphosite_table
-    from protein_explorer.analysis.motif_blosum_scorer import find_blosum_matches_batch
+    from protein_explorer.analysis.motif_blosum_scorer import find_blosum_matches_batch_optimized
     
     # Initialize variables
     results = None
@@ -715,7 +717,7 @@ def phosphosite_analysis():
                 # Try to find structural matches
                 try:
                     # Batch query for structural matches
-                    all_matches = find_structural_matches_batch(site_ids, rmsd_threshold=10.0)
+                    all_matches = find_structural_matches_batch(site_ids, rmsd_threshold=4.0)
                     # Organize by site
                     structural_matches = {}
                     for site in phosphosites:
@@ -885,25 +887,38 @@ def phosphosite_analysis():
                         
                         # Get BLOSUM matches
                         print("STARTING BLOSUM MATCHES")
-                        blosum_matches = find_blosum_matches_batch(unmatched_sites, min_similarity)
+                        blosum_matches = find_blosum_matches_batch_optimized(unmatched_sites, min_similarity)
                         print("FINISHED BLOSUM MATCHES")
 
                         logger.info(f"Found BLOSUM matches for {len(blosum_matches)} previously unmatched sites")
-                        
+                        print("ENHANCING BLOSSUM MATCHES")
+                        blosum_enhanced = enhance_sequence_matches_batch(blosum_matches)
+                        print("BLOSSUM MATCHES ENHANCED")
+                        print(blosum_enhanced)
                         # Combine with existing sequence matches
                         if not sequence_matches:
                             sequence_matches = {}
                             
                         # Add BLOSUM matches to sequence_matches dictionary
-                        for site_name, matches in blosum_matches.items():
-                            if site_name in sequence_matches:
+                        for key, matches in blosum_enhanced.items():
+                            if key in sequence_matches:
                                 # Add to existing matches
-                                sequence_matches[site_name].extend(matches)
+                                #print("MATCHES")
+                                #print(matches)
+                                for match in matches:
+                                    if match['target_uniprot'] is None:
+                                        match['target_uniprot'] = match['target_id'].split('_')[0]
+                                sequence_matches[key].extend(matches)
                                 # Re-sort by similarity
-                                sequence_matches[site_name].sort(key=lambda x: x['similarity'], reverse=True)
+                                sequence_matches[key].sort(key=lambda x: x['similarity'], reverse=True)
                             else:
                                 # Create new entry
-                                sequence_matches[site_name] = matches
+                                #print("MATCHES")
+                                #print(matches)
+                                for match in matches:
+                                    if match['target_uniprot'] is None:
+                                        match['target_uniprot'] = match['target_id'].split('_')[0]
+                                sequence_matches[key] = matches
                                 
                         # Update results
                         results['sequence_matches'] = sequence_matches
@@ -947,6 +962,14 @@ def phosphosite_analysis():
             # Generate sequence similarity network visualization
             from protein_explorer.visualization.protein_sequence_phosphosite_network import create_sequence_network_visualization
             print("CREATING SEQUENCE NETWORK VISUALIZATION")
+            print(results['sequence_matches'])
+            for key,matches in results['sequence_matches'].items():
+                for match in matches:
+                    if (math.isnan(match['site_plddt']) or math.isnan(match['nearby_count']) or  math.isnan(match['surface_accessibility'])):
+                        uniprot_to_query = match['target_uniprot']
+                        structure = get_alphafold_structure(uniprot_to_query)
+                        if structure is not None:
+                            context_data = analyze_phosphosite_context(structure,match['target_id'].split("_")[1], match['site_type'])
 
             sequence_network_visualization = create_sequence_network_visualization(
                 results['protein_info']['uniprot_id'],
