@@ -161,6 +161,7 @@ def create_sequence_network_visualization(protein_uniprot_id, phosphosites=None,
     
 
     print('JSONIFIED PROCESSED MATCHES')
+    processed_matches = sequence_matches
     print(processed_matches)
 
     # Create network visualization HTML
@@ -268,8 +269,8 @@ def create_sequence_network_visualization(protein_uniprot_id, phosphosites=None,
                     site_copy['knownKinase'] = kinase_info
                 
                 processed_sites.append(site_copy)
-            print("JSONIFIED PHOSPHOSITES")
-            print(processed_sites)
+            #print("JSONIFIED PHOSPHOSITES")
+            #print(processed_sites)
             sites_json = json.dumps(processed_sites)
         except Exception as sites_err:
             logger.error(f"Error converting phosphosites to JSON: {sites_err}")
