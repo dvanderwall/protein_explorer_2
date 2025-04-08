@@ -371,13 +371,13 @@ QUERY_TEMPLATES = {
     """, 
     "get_structural_annotations": """
         SELECT * FROM `STY_Structural_Annotations`
-        WHERE `PhosphositeID` = :site_id
+        WHERE `Site` = :site_id
         /* Uses primary key */
     """,
 
     "get_structural_annotations_batch": """
         SELECT * FROM `STY_Structural_Annotations`
-        WHERE `PhosphositeID` IN :site_ids
+        WHERE `Site` IN :site_ids
         /* Uses primary key */
     """,
 
@@ -1823,133 +1823,10 @@ def find_structural_annotations_by_uniprot(uniprot_id: str) -> List[Dict]:
         logger.error(f"Error finding structural annotations for protein {uniprot_id}: {e}")
         return []
 
-def find_high_quality_sites(min_plddt: float = 70.0, limit: int = 1000) -> List[Dict]:
+def get_comprehensive_site_data(site_id: str) -> Dict:
     """
-    Find phosphosites with high structural quality based on pLDDT score.
-    Uses idx_plddt index for optimized lookup.
-    
-    Args:
-        min_plddt: Minimum pLDDT score (higher is better quality)
-        limit: Maximum number of sites to return
-        
-    Returns:
-        List of dictionaries with high-quality site data
-    """
-    # Check cache first
-    cache_key = f"high_quality_sites_{min_plddt}_{limit}"
-    if cache_key in QUERY_CACHE and is_cache_valid(cache_key):
-        PERFORMANCE_METRICS["cache_hits"] += 1
-        return QUERY_CACHE[cache_key]
-    
-    PERFORMANCE_METRICS["cache_misses"] += 1
-    
-    try:
-        query = QUERY_TEMPLATES["find_high_quality_sites"] + f" LIMIT {limit}"
-        df = execute_query(query, {"min_plddt": min_plddt})
-        
-        sites = []
-        if not df.empty:
-            for _, row in df.iterrows():
-                row_dict = row.to_dict()
-                # Ensure motif is uppercase if present
-                if 'Motif' in row_dict and row_dict['Motif']:
-                    row_dict['Motif'] = str(row_dict['Motif']).upper()
-                sites.append(row_dict)
-        
-        # Cache the result
-        QUERY_CACHE[cache_key] = sites
-        CACHE_TIMESTAMPS[cache_key] = time.time()
-        
-        return sites
-    except Exception as e:
-        logger.error(f"Error finding high quality sites: {e}")
-        return []
-
-def find_sites_by_secondary_structure(structure_type: str) -> List[Dict]:
-    """
-    Find phosphosites by secondary structure type.
-    Uses idx_secondary_structure index for optimized lookup.
-    
-    Args:
-        structure_type: Secondary structure type (e.g., 'HELIX', 'STRAND', 'TURN')
-        
-    Returns:
-        List of dictionaries with site data
-    """
-    # Check cache first
-    cache_key = f"sites_by_structure_{structure_type}"
-    if cache_key in QUERY_CACHE and is_cache_valid(cache_key):
-        PERFORMANCE_METRICS["cache_hits"] += 1
-        return QUERY_CACHE[cache_key]
-    
-    PERFORMANCE_METRICS["cache_misses"] += 1
-    
-    try:
-        query = QUERY_TEMPLATES["find_sites_by_secondary_structure"]
-        df = execute_query(query, {"structure_type": structure_type})
-        
-        sites = []
-        if not df.empty:
-            for _, row in df.iterrows():
-                row_dict = row.to_dict()
-                # Ensure motif is uppercase if present
-                if 'Motif' in row_dict and row_dict['Motif']:
-                    row_dict['Motif'] = str(row_dict['Motif']).upper()
-                sites.append(row_dict)
-        
-        # Cache the result
-        QUERY_CACHE[cache_key] = sites
-        CACHE_TIMESTAMPS[cache_key] = time.time()
-        
-        return sites
-    except Exception as e:
-        logger.error(f"Error finding sites by secondary structure: {e}")
-        return []
-
-def find_exposed_sites(min_exposure: float = 0.5, limit: int = 1000) -> List[Dict]:
-    """
-    Find phosphosites with high solvent exposure.
-    
-    Args:
-        min_exposure: Minimum hydroxyl exposure value (0-1, higher is more exposed)
-        limit: Maximum number of sites to return
-        
-    Returns:
-        List of dictionaries with exposed site data
-    """
-    # Check cache first
-    cache_key = f"exposed_sites_{min_exposure}_{limit}"
-    if cache_key in QUERY_CACHE and is_cache_valid(cache_key):
-        PERFORMANCE_METRICS["cache_hits"] += 1
-        return QUERY_CACHE[cache_key]
-    
-    PERFORMANCE_METRICS["cache_misses"] += 1
-    
-    try:
-        query = QUERY_TEMPLATES["find_exposed_sites"] + f" LIMIT {limit}"
-        df = execute_query(query, {"min_exposure": min_exposure})
-        
-        sites = []
-        if not df.empty:
-            for _, row in df.iterrows():
-                row_dict = row.to_dict()
-                # Ensure motif is uppercase if present
-                if 'Motif' in row_dict and row_dict['Motif']:
-                    row_dict['Motif'] = str(row_dict['Motif']).upper()
-                sites.append(row_dict)
-        
-        # Cache the result
-        QUERY_CACHE[cache_key] = sites
-        CACHE_TIMESTAMPS[cache_key] = time.time()
-        
-        return sites
-    except Exception as e:
-        logger.error(f"Error finding exposed sites: {e}")
-        return []
-
-def get_integrated_site_data(site_id: str) -> Dict:
-    """
-    Get comprehensive data for a site by combining phosphosite data with structural annotations.
+    Get comprehensive data for a specific site by combining STY_Structural_Annotations 
+    with Phosphosite_Supplementary_Data.
     
     Args:
         site_id: Site ID in format 'UniProtID_ResidueNumber'
@@ -1957,29 +1834,78 @@ def get_integrated_site_data(site_id: str) -> Dict:
     Returns:
         Integrated dictionary with all site data
     """
-    # Get phosphosite data
-    phosphosite_data = get_phosphosite_data(site_id)
-    
     # Get structural annotations
     structural_data = get_structural_annotations(site_id)
+    
+    # Get phosphosite supplementary data
+    supplementary_data = get_phosphosite_data(site_id)
     
     # Create integrated data dictionary
     integrated_data = {}
     
-    # Add phosphosite data if available
-    if phosphosite_data:
-        integrated_data.update(phosphosite_data)
-    
-    # Add structural data if available (will overwrite duplicate keys)
+    # Add structural data if available
     if structural_data:
-        # Add a prefix to structural keys to avoid confusion with duplicate keys
-        for key, value in structural_data.items():
-            if key in integrated_data and key not in ['UniProtID', 'ResidueNumber', 'PhosphositeID']:
-                integrated_data[f"struct_{key}"] = value
-            else:
+        integrated_data.update(structural_data)
+    
+    # Add supplementary data if available (will overwrite duplicate keys)
+    if supplementary_data:
+        for key, value in supplementary_data.items():
+            # Skip None values when supplementary data has them
+            if value is not None:
                 integrated_data[key] = value
     
+    # Ensure site ID is included
+    if 'PhosphositeID' not in integrated_data:
+        integrated_data['PhosphositeID'] = site_id
+    
     return integrated_data
+
+def get_comprehensive_site_data_batch(site_ids: List[str]) -> Dict[str, Dict]:
+    """
+    Get comprehensive data for multiple sites by combining STY_Structural_Annotations
+    with Phosphosite_Supplementary_Data in an efficient batch operation.
+    
+    Args:
+        site_ids: List of site IDs in format 'UniProtID_ResidueNumber'
+        
+    Returns:
+        Dictionary mapping site IDs to comprehensive data dictionaries
+    """
+    if not site_ids:
+        return {}
+    
+    result = {}
+    
+    # Get structural annotations in batch
+    structural_batch = get_structural_annotations_batch(site_ids)
+    
+    # Get phosphosite supplementary data in batch
+    supplementary_batch = get_phosphosites_batch(site_ids)
+    
+    # Combine the data for each site
+    for site_id in site_ids:
+        integrated_data = {}
+        
+        # Add structural data if available
+        if site_id in structural_batch:
+            integrated_data.update(structural_batch[site_id])
+        
+        # Add supplementary data if available
+        if site_id in supplementary_batch:
+            for key, value in supplementary_batch[site_id].items():
+                # Skip None values
+                if value is not None:
+                    integrated_data[key] = value
+        
+        # Only add to results if we have some data
+        if integrated_data:
+            # Ensure site ID is included
+            if 'PhosphositeID' not in integrated_data:
+                integrated_data['PhosphositeID'] = site_id
+                
+            result[site_id] = integrated_data
+    
+    return result
 
 def clear_cache():
     """Clear the query cache."""

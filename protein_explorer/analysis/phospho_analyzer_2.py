@@ -239,6 +239,210 @@ def enhance_structural_matches_group(matches, site):
     
     return enhanced_matches
 
+
+def enhance_structural_matches_optimized(matches, site):
+    """
+    Enhance structural matches with supplementary data using the
+    new STY_Structural_Annotations table.
+    Ensures motif sequences in matches are uppercase.
+    
+    Args:
+        matches: List of structural match dictionaries
+        site: Query site string for logging
+        
+    Returns:
+        Enhanced list of matches
+    """
+    if not matches:
+        return []
+    
+    logger.info(f"Enhancing {len(matches)} structural matches for {site}")
+    
+    # Get all target IDs for batch query
+    target_ids = []
+    for match in matches:
+        target_uniprot = match.get('target_uniprot')
+        target_site = match.get('target_site')
+        
+        if target_uniprot and target_site:
+            # Extract number from the target site
+            site_number = ''.join(filter(str.isdigit, target_site))
+            if site_number:
+                target_id = f"{target_uniprot}_{site_number}"
+                target_ids.append(target_id)
+    
+    # Get comprehensive data for all targets in one batch query
+    from protein_explorer.db.db import get_comprehensive_site_data_batch
+    all_target_data = get_comprehensive_site_data_batch(target_ids)
+    
+    # Process each match with the enhanced data
+    enhanced_matches = []
+    for match in matches:
+        # Skip self-matches (RMSD ≈ 0)
+        if match.get('rmsd', 0) < 0.01:
+            continue
+            
+        # Create a copy of the match to enhance
+        enhanced_match = match.copy()
+        
+        # Get target info
+        target_uniprot = match.get('target_uniprot')
+        target_site = match.get('target_site')
+        
+        # Skip if missing target info
+        if not target_uniprot or not target_site:
+            continue
+            
+        # Extract number from the target site
+        site_number = ''.join(filter(str.isdigit, target_site))
+        if not site_number:
+            continue
+            
+        # Create target ID
+        target_id = f"{target_uniprot}_{site_number}"
+        
+        # Get comprehensive data for this target
+        target_data = all_target_data.get(target_id, {})
+        
+        if target_data:
+            # Add data from STY_Structural_Annotations
+            if 'pLDDT' in target_data:
+                enhanced_match['plddt'] = float(target_data['pLDDT'])
+            
+            if 'NeighborCount' in target_data:
+                enhanced_match['nearby_count'] = int(target_data['NeighborCount'])
+            
+            if 'HydroxylExposure' in target_data:
+                # Convert to percentage for consistency
+                enhanced_match['surface_accessibility'] = float(target_data['HydroxylExposure'] * 100)
+            
+            if 'SecondaryStructure' in target_data:
+                enhanced_match['secondary_structure'] = target_data['SecondaryStructure']
+            
+            # Get motif - try different field names
+            if 'Motif' in target_data and target_data['Motif']:
+                enhanced_match['motif'] = target_data['Motif'].upper()
+            elif 'SITE_+/-7_AA' in target_data and target_data['SITE_+/-7_AA']:
+                enhanced_match['motif'] = target_data['SITE_+/-7_AA'].upper()
+            
+            # Check for kinase information
+            known_kinases = []
+            for i in range(1, 6):
+                kinase_field = f"KINASE_{i}"
+                if kinase_field in target_data and target_data[kinase_field] and target_data[kinase_field] != 'unlabeled':
+                    known_kinases.append(target_data[kinase_field])
+            
+            if known_kinases:
+                enhanced_match['known_kinase'] = ', '.join(known_kinases)
+        
+        # Make sure any existing motif is uppercase
+        if 'motif' in enhanced_match and enhanced_match['motif']:
+            enhanced_match['motif'] = enhanced_match['motif'].upper()
+            
+        enhanced_matches.append(enhanced_match)
+    
+    return enhanced_matches
+
+def enhance_structural_matches_group_optimized(matches, site):
+    """
+    Enhance structural matches with supplementary data using batch processing.
+    Optimized version that uses STY_Structural_Annotations and comprehensive site data.
+    
+    Args:
+        matches: List of structural match dictionaries
+        site: Query site string for logging
+        
+    Returns:
+        Enhanced list of matches
+    """
+    if not matches:
+        return []
+    
+    logger.info(f"Enhancing {len(matches)} structural matches for {site}")
+    
+    # Filter out self-matches (RMSD ≈ 0)
+    filtered_matches = [match for match in matches if match.get('rmsd', 0) >= 0.01]
+    
+    # Prepare target_ids for batch query
+    target_ids = []
+    match_indices = {}  # To map target_ids back to their matches
+    
+    for i, match in enumerate(filtered_matches):
+        target_uniprot = match.get('target_uniprot')
+        target_site = match.get('target_site')
+        
+        # Parse site number from target_site
+        site_match = re.match(r'([A-Z]?)(\d+)', target_site)
+        if site_match:
+            site_type = site_match.group(1) or 'S'  # Default to S if missing
+            resno = int(site_match.group(2))
+            target_id = f"{target_uniprot}_{resno}"
+            
+            target_ids.append(target_id)
+            match_indices[target_id] = i
+    
+    # Get comprehensive data for all targets in one batch query
+    from protein_explorer.db.db import get_comprehensive_site_data_batch
+    all_target_data = get_comprehensive_site_data_batch(target_ids)
+    
+    # Create enhanced matches
+    enhanced_matches = []
+    
+    for i, match in enumerate(filtered_matches):
+        # Create enhanced match (copy the original)
+        enhanced_match = match.copy()
+        
+        target_uniprot = match.get('target_uniprot')
+        target_site = match.get('target_site')
+        
+        # Parse site number from target_site
+        site_match = re.match(r'([A-Z]?)(\d+)', target_site)
+        if site_match:
+            site_type = site_match.group(1) or 'S'  # Default to S if missing
+            resno = int(site_match.group(2))
+            target_id = f"{target_uniprot}_{resno}"
+            
+            # Get comprehensive data from the batch results
+            target_data = all_target_data.get(target_id)
+            if target_data:
+                # Add data from STY_Structural_Annotations
+                if 'pLDDT' in target_data:
+                    enhanced_match['plddt'] = float(target_data['pLDDT'])
+                
+                if 'NeighborCount' in target_data:
+                    enhanced_match['nearby_count'] = int(target_data['NeighborCount'])
+                
+                if 'HydroxylExposure' in target_data:
+                    # Convert to percentage for consistency
+                    enhanced_match['surface_accessibility'] = float(target_data['HydroxylExposure'] * 100)
+                
+                if 'SecondaryStructure' in target_data:
+                    enhanced_match['secondary_structure'] = target_data['SecondaryStructure']
+                
+                # Get motif - try different field names
+                if 'Motif' in target_data and target_data['Motif']:
+                    enhanced_match['motif'] = target_data['Motif'].upper()
+                elif 'SITE_+/-7_AA' in target_data and target_data['SITE_+/-7_AA']:
+                    enhanced_match['motif'] = target_data['SITE_+/-7_AA'].upper()
+                
+                # Check for kinase information
+                known_kinases = []
+                for i in range(1, 6):
+                    kinase_field = f"KINASE_{i}"
+                    if kinase_field in target_data and target_data[kinase_field] and target_data[kinase_field] != 'unlabeled':
+                        known_kinases.append(target_data[kinase_field])
+                
+                if known_kinases:
+                    enhanced_match['known_kinase'] = ', '.join(known_kinases)
+        
+        # Make sure any existing motif is uppercase
+        if 'motif' in enhanced_match and enhanced_match['motif']:
+            enhanced_match['motif'] = enhanced_match['motif'].upper()
+            
+        enhanced_matches.append(enhanced_match)
+    
+    return enhanced_matches
+
 def get_phosphosites(uniprot_id: str) -> List[Dict]:
     """
     Analyze potential phosphorylation sites for a protein, with supplementary data.
