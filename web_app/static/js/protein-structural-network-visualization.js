@@ -39,35 +39,26 @@ function setupPhosphositeStructuralNetwork(proteinUniprotId) {
     infoPanel.innerHTML = '<p class="text-center"><em>Hover over a node to see details</em></p>';
     networkContainer.appendChild(infoPanel);
     
+    // Update RMSD slider range
+    const rmsdFilter = document.getElementById('rmsd-filter');
+    if (rmsdFilter) {
+        rmsdFilter.min = "0.1";
+        rmsdFilter.max = "10.0";
+        if (parseFloat(rmsdFilter.value) > 10.0) {
+            rmsdFilter.value = "10.0";
+            document.getElementById('rmsd-value').textContent = "10.0 Å";
+        }
+    }
+    
     // Extract network data from the page DOM
     const networkData = extractStructuralNetworkData(proteinUniprotId);
     
     if (!networkData || networkData.nodes.length === 0) {
-        networkContainer.innerHTML = '<div class="alert alert-info m-3 mt-5">No phosphosite structural network data available. This could be because no structural matches were found with RMSD < 2.0.</div>';
+        networkContainer.innerHTML = '<div class="alert alert-info m-3 mt-5">No phosphosite structural network data available. This could be because no structural matches were found with RMSD < 10.0.</div>';
         return;
     }
     
-    // Create a map of node IDs for quick lookup
-    const nodeIdMap = new Map();
-    networkData.nodes.forEach(node => {
-        nodeIdMap.set(node.id, true);
-    });
-    
-    // Filter links to include only those where both source and target nodes exist
-    const validLinks = networkData.links.filter(link => {
-        // Check if both source and target nodes exist
-        const sourceExists = nodeIdMap.has(link.source) || 
-                            (typeof link.source === 'object' && link.source.id && nodeIdMap.has(link.source.id));
-        const targetExists = nodeIdMap.has(link.target) || 
-                            (typeof link.target === 'object' && link.target.id && nodeIdMap.has(link.target.id));
-        
-        return sourceExists && targetExists;
-    });
-    
-    console.log(`Creating structural network with ${networkData.nodes.length} nodes and ${validLinks.length} links (${networkData.links.length - validLinks.length} invalid links removed)`);
-    
-    // Update the links in the network data
-    networkData.links = validLinks;
+    console.log(`Creating structural network with ${networkData.nodes.length} nodes and ${networkData.links.length} links`);
     
     // Create SVG element
     const svg = d3.select(networkContainer)
@@ -122,27 +113,30 @@ function setupPhosphositeStructuralNetwork(proteinUniprotId) {
     
     function getLinkColor(d) {
         if (d.rmsd < 1.0) return '#4CAF50'; // Green for very low RMSD
-        if (d.rmsd < 1.5) return '#8BC34A'; // Light green for low RMSD
-        if (d.rmsd < 2.0) return '#CDDC39'; // Lime for medium RMSD
-        return '#FFC107'; // Yellow/amber for higher RMSD
+        if (d.rmsd < 2.0) return '#8BC34A'; // Light green for low RMSD
+        if (d.rmsd < 4.0) return '#CDDC39'; // Lime for medium RMSD
+        if (d.rmsd < 7.0) return '#FFC107'; // Yellow/amber for higher RMSD
+        return '#FF9800'; // Orange for highest RMSD values
     }
     
     function getLinkWidth(d) {
         // Scale link width based on RMSD - thicker for lower RMSD
-        return Math.max(1, 4 / Math.max(0.5, d.rmsd));
+        return Math.max(0.5, 5 / Math.max(1, d.rmsd));
     }
     
-    // Setup force simulation with the validated network data
+    // Setup force simulation with reduced physics
     networkSimulation = d3.forceSimulation(networkData.nodes)
         .force('link', d3.forceLink(networkData.links)
             .id(d => d.id)
-            .distance(d => d.rmsd ? d.rmsd * 30 : 60))
+            .distance(d => d.rmsd ? d.rmsd * 50 : 100))
         .force('charge', d3.forceManyBody()
             .strength(d => d.type === 'protein' ? -50 : -25))
         .force('center', d3.forceCenter(width / 2, height / 2))
-        .force('collision', d3.forceCollide().radius(d => d.size + 3))
-        .force('x', d3.forceX(width / 2).strength(0.1))
-        .force('y', d3.forceY(height / 2).strength(0.1));
+        .force('collision', d3.forceCollide().radius(d => d.size + 2))
+        .force('x', d3.forceX(width / 2).strength(0.2))
+        .force('y', d3.forceY(height / 2).strength(0.2))
+        .alphaDecay(0.05)
+        .velocityDecay(0.6);
     
     // Draw links
     const link = g.append('g')
@@ -189,7 +183,6 @@ function setupPhosphositeStructuralNetwork(proteinUniprotId) {
         .text(d => d.name);
     
     // Function to update info panel
-    // Function to update info panel
     function updateInfoPanel(d) {
         let content = '';
         if (d.type === 'protein') {
@@ -198,8 +191,8 @@ function setupPhosphositeStructuralNetwork(proteinUniprotId) {
                 <p><strong>Site Type:</strong> ${d.siteType}</p>
                 <p><strong>Known Site:</strong> ${d.isKnown ? 'Yes' : 'No'}</p>
                 ${d.known_kinase ? `<p><strong>Known Kinase${d.known_kinase.includes(',') ? 's' : ''}:</strong> ${formatKinaseList(d.known_kinase)}</p>` : ''}
-                ${d.meanPlddt ? `<p><strong>Mean pLDDT:</strong> ${d.meanPlddt}</p>` : ''}
-                ${d.nearbyCount ? `<p><strong>Nearby Residues:</strong> ${d.nearbyCount}</p>` : ''}
+                ${d.meanPLDDT || d.mean_plddt ? `<p><strong>Mean pLDDT:</strong> ${d.meanPLDDT || d.mean_plddt}</p>` : ''}
+                ${d.nearbyCount || d.nearby_count ? `<p><strong>Nearby Residues:</strong> ${d.nearbyCount || d.nearby_count}</p>` : ''}
                 ${d.surface_accessibility ? `<p><strong>Surface Access:</strong> ${typeof d.surface_accessibility === 'number' ? d.surface_accessibility.toFixed(1) : d.surface_accessibility}%</p>` : ''}
                 ${d.motif ? `<p><strong>Motif:</strong> <code>${d.motif}</code></p>` : ''}
                 <div class="d-grid gap-2 mt-3">
@@ -308,7 +301,7 @@ function extractStructuralNetworkData(proteinUniprotId) {
         // Initialize node and link collections
         const nodes = [];
         const links = [];
-        const nodeMap = new Map(); // Track unique nodes
+        const nodeMap = new Map(); // Track unique nodes by ID
         
         // Step 1: Try to get phosphosites data from the hidden data element
         const phosphositesDataElement = document.getElementById('phosphosites-data');
@@ -366,9 +359,9 @@ function extractStructuralNetworkData(proteinUniprotId) {
                         if (motifCell) motif = motifCell.textContent.trim();
                         
                         // Get mean pLDDT if available
-                        let meanPlddt = '';
+                        let meanPLDDT = '';
                         const pLDDTCell = row.querySelector('td:nth-child(3)');
-                        if (pLDDTCell) meanPlddt = pLDDTCell.textContent.trim();
+                        if (pLDDTCell) meanPLDDT = pLDDTCell.textContent.trim();
                         
                         // Get nearby count if available
                         let nearbyCount = '';
@@ -390,16 +383,20 @@ function extractStructuralNetworkData(proteinUniprotId) {
                             knownKinase = dataKinase;
                         }
                         
-                        // Create site data object
+                        // Create site data object matching Python naming conventions
                         phosphositesData.push({
                             site: siteName,
                             resno: parseInt(resno),
                             siteType: siteType,
                             is_known: isKnown,
+                            is_known_phosphosite: isKnown ? 1.0 : 0.0,
                             motif: motif,
-                            meanPlddt: meanPlddt,
+                            meanPLDDT: meanPLDDT,
+                            mean_plddt: meanPLDDT,
                             nearbyCount: nearbyCount,
-                            known_kinase: knownKinase
+                            nearby_count: nearbyCount,
+                            known_kinase: knownKinase,
+                            surface_accessibility: row.getAttribute('data-surface') || ''
                         });
                     });
                     
@@ -416,8 +413,13 @@ function extractStructuralNetworkData(proteinUniprotId) {
                 continue;
             }
             
-            // Create node ID - IMPORTANT: Using resno without letter
+            // Create node ID - IMPORTANT: Using resno without letter for consistency
             const resno = site.resno || parseInt(site.site.substring(1));
+            if (isNaN(resno)) {
+                console.warn(`Invalid residue number for site: ${site.site}`);
+                continue;
+            }
+            
             const nodeId = `${proteinUniprotId}_${resno}`;
             
             // Skip if already added
@@ -426,7 +428,7 @@ function extractStructuralNetworkData(proteinUniprotId) {
             // Extract known kinase information if available
             const knownKinase = site.known_kinase || site.knownKinase;
             
-            // Create node with all available data
+            // Create node with all available data using Python naming conventions
             const node = {
                 id: nodeId,
                 name: site.site,
@@ -437,8 +439,12 @@ function extractStructuralNetworkData(proteinUniprotId) {
                 siteType: site.siteType || site.site[0],
                 motif: site.motif || '',
                 known_kinase: knownKinase,
-                meanPlddt: site.meanPlddt || site.mean_plddt || '',
+                meanPLDDT: site.meanPLDDT || site.mean_plddt || '',
+                mean_plddt: site.meanPLDDT || site.mean_plddt || '',
                 nearbyCount: site.nearbyCount || site.nearby_count || '',
+                nearby_count: site.nearbyCount || site.nearby_count || '',
+                surface_accessibility: site.surface_accessibility || '',
+                surfaceAccessibility: site.surface_accessibility || '',
                 size: 10
             };
             
@@ -457,6 +463,7 @@ function extractStructuralNetworkData(proteinUniprotId) {
             try {
                 const matchesJson = matchesDataElement.getAttribute('data-matches');
                 if (matchesJson) {
+                    console.log("Found structural match data");
                     const matchesData = JSON.parse(cleanJson(matchesJson));
                     
                     if (matchesData) {
@@ -466,15 +473,43 @@ function extractStructuralNetworkData(proteinUniprotId) {
                         for (const [siteName, matches] of Object.entries(matchesData)) {
                             // Skip if site name starts with 'Y' (Tyrosine)
                             if (siteName[0] === 'Y') continue;
-                            
+        
                             // Skip sites without matches
                             if (!Array.isArray(matches) || matches.length === 0) continue;
                             
-                            // Extract site number without letter for node ID
+                            // Extract site number without letter consistently
                             const siteResno = parseInt(siteName.replace(/[A-Z]/g, ''));
-                            // Create source node ID with just the number
-                            const sourceNodeId = `${proteinUniprotId}_${siteResno}`;
+                            if (isNaN(siteResno)) {
+                                console.warn(`Invalid residue number for site: ${siteName}`);
+                                continue;
+                            }
                             
+                            // Create source node ID with just the number
+                            const sourceNodeId = `${siteName}`;
+
+                            console.log(`Processing ${matches.length} matches for site ${siteName}`);
+                            
+                            // Ensure source node exists
+                            if (!nodeMap.has(sourceNodeId)) {
+                                // If the source node doesn't exist, create it
+                                console.log(`Source node ${sourceNodeId} not found, creating it`);
+                                
+                                // Create minimal source node
+                                const sourceNode = {
+                                    id: sourceNodeId,
+                                    name: siteName,
+                                    uniprot: proteinUniprotId,
+                                    type: 'protein',
+                                    isKnown: false,
+                                    siteType: siteName[0],
+                                    size: 10
+                                };
+                                
+                                nodes.push(sourceNode);
+                                nodeMap.set(sourceNodeId, sourceNode);
+                            }
+                            
+                            // Process each match
                             for (const match of matches) {
                                 // Skip matches with Y sites
                                 if (match.target_site && match.target_site[0] === 'Y') continue;
@@ -482,20 +517,28 @@ function extractStructuralNetworkData(proteinUniprotId) {
                                 // Get target info
                                 const targetUniprot = match.target_uniprot;
                                 const targetSite = match.target_site;
-                                const rmsd = match.rmsd;
+                                const rmsd = parseFloat(match.rmsd);
                                 
-                                // Skip if missing essential info
-                                if (!targetUniprot || !targetSite || !rmsd) continue;
+                                // Skip if missing essential info or invalid RMSD
+                                if (!targetUniprot || !targetSite || isNaN(rmsd)) {
+                                    console.warn(`Missing or invalid match data for ${siteName}:`, match);
+                                    continue;
+                                }
                                 
                                 // Extract target residue number without letter
                                 const targetResno = parseInt(targetSite.replace(/[A-Z]/g, ''));
+                                if (isNaN(targetResno)) {
+                                    console.warn(`Invalid target residue number: ${targetSite}`);
+                                    continue;
+                                }
+                                
                                 // Create target node ID with just the number
                                 const targetNodeId = `${targetUniprot}_${targetResno}`;
                                 
                                 // Skip self-references
                                 if (sourceNodeId === targetNodeId) continue;
                                 
-                                // Extract known kinase information
+                                // Extract kinase information using Python's naming convention
                                 const knownKinase = match.known_kinase;
                                 
                                 // Add target node if not already present
@@ -505,11 +548,17 @@ function extractStructuralNetworkData(proteinUniprotId) {
                                         name: targetSite,
                                         uniprot: targetUniprot,
                                         type: 'match',
-                                        isKnown: false,  // Default for matches
+                                        isKnown: match.is_known_phosphosite === 1 || match.is_known === true,
                                         siteType: targetSite[0],
                                         rmsd: rmsd,
                                         known_kinase: knownKinase,
                                         motif: match.motif || '',
+                                        mean_plddt: match.mean_plddt || match.site_plddt || '',
+                                        meanPLDDT: match.mean_plddt || match.site_plddt || '',
+                                        nearby_count: match.nearby_count || '',
+                                        nearbyCount: match.nearby_count || '',
+                                        surface_accessibility: match.surface_accessibility || '',
+                                        surfaceAccessibility: match.surface_accessibility || '',
                                         size: 8  // Slightly smaller for match sites
                                     };
                                     
@@ -517,23 +566,30 @@ function extractStructuralNetworkData(proteinUniprotId) {
                                     nodeMap.set(targetNodeId, targetNode);
                                 }
                                 
-                                // Create link
+                                // Create link with explicit source and target as strings
+                                // This is critical for D3 to properly connect nodes
                                 links.push({
                                     source: sourceNodeId,
                                     target: targetNodeId,
                                     rmsd: rmsd
                                 });
+                                
+                                console.log(`Added link: ${sourceNodeId} -> ${targetNodeId}, RMSD: ${rmsd}`);
                             }
                         }
                     }
                 }
             } catch (e) {
                 console.error("Error processing structural match data:", e);
+                console.error(e.stack); // Add stack trace for better debugging
             }
+        } else {
+            console.warn("Structural match data element not found");
         }
         
         // If we didn't find matches from the data element, try from DOM elements
         if (links.length === 0) {
+            console.log("No links from data element, trying to extract from DOM");
             document.querySelectorAll('.match-card').forEach(matchCard => {
                 const header = matchCard.querySelector('.card-header h5');
                 if (!header) return;
@@ -549,15 +605,20 @@ function extractStructuralNetworkData(proteinUniprotId) {
                 
                 // Extract site number without letter
                 const siteResno = parseInt(siteName.replace(/[A-Z]/g, ''));
+                if (isNaN(siteResno)) {
+                    console.warn(`Invalid residue number for site: ${siteName}`);
+                    return;
+                }
+                
                 // Create source node ID with just the number
                 const sourceNodeId = `${proteinUniprotId}_${siteResno}`;
                 
                 // Make sure source node exists
                 if (!nodeMap.has(sourceNodeId)) {
-                    // If the source node doesn't exist, try to create it
+                    // If the source node doesn't exist, create it
                     console.log(`Source node ${sourceNodeId} not found, creating it`);
                     
-                    nodes.push({
+                    const sourceNode = {
                         id: sourceNodeId,
                         name: siteName,
                         uniprot: proteinUniprotId,
@@ -565,9 +626,10 @@ function extractStructuralNetworkData(proteinUniprotId) {
                         isKnown: false,
                         siteType: siteName[0],
                         size: 10
-                    });
+                    };
                     
-                    nodeMap.set(sourceNodeId, { id: sourceNodeId });
+                    nodes.push(sourceNode);
+                    nodeMap.set(sourceNodeId, sourceNode);
                 }
                 
                 // Get match table
@@ -584,8 +646,8 @@ function extractStructuralNetworkData(proteinUniprotId) {
                     const targetUniprotCell = cells[0];
                     const targetUniprotLink = targetUniprotCell.querySelector('a');
                     const targetUniprot = targetUniprotLink ? 
-                                      targetUniprotLink.textContent.trim() : 
-                                      targetUniprotCell.textContent.trim();
+                                     targetUniprotLink.textContent.trim() : 
+                                     targetUniprotCell.textContent.trim();
                     
                     const targetSite = cells[1].textContent.trim();
                     
@@ -607,11 +669,22 @@ function extractStructuralNetworkData(proteinUniprotId) {
                     
                     // Skip if RMSD is above threshold (initial filter, can be changed later by UI)
                     const rmsdFilter = document.getElementById('rmsd-filter');
-                    const currentThreshold = rmsdFilter ? parseFloat(rmsdFilter.value) : 2.0;
+                    if (rmsdFilter) {
+                        rmsdFilter.min = "0.1";
+                        rmsdFilter.max = "10.0";
+                        rmsdFilter.value = "4.0"; // Default value
+                        document.getElementById('rmsd-value').textContent = "4.0 Å";
+                    }
+                    const currentThreshold = rmsdFilter ? parseFloat(rmsdFilter.value) : 10.0;
                     if (rmsd > currentThreshold) return;
                     
                     // Extract target residue number without letter
                     const targetResno = parseInt(targetSite.replace(/[A-Z]/g, ''));
+                    if (isNaN(targetResno)) {
+                        console.warn(`Invalid target residue number: ${targetSite}`);
+                        return;
+                    }
+                    
                     // Create target node ID with just the number
                     const targetNodeId = `${targetUniprot}_${targetResno}`;
                     
@@ -646,31 +719,70 @@ function extractStructuralNetworkData(proteinUniprotId) {
                         };
                         
                         nodes.push(targetNode);
-                        nodeMap.set(targetNodeId, { id: targetNodeId });
+                        nodeMap.set(targetNodeId, targetNode);
                     }
                     
-                    // Add link
+                    // Add link with explicit source and target as strings
                     links.push({
                         source: sourceNodeId,
                         target: targetNodeId,
                         rmsd: rmsd
                     });
+                    
+                    console.log(`Added link from DOM: ${sourceNodeId} -> ${targetNodeId}, RMSD: ${rmsd}`);
                 });
             });
         }
         
-        // Return network data if we have nodes
-        if (nodes.length > 0) {
-            console.log(`Final structural network: ${nodes.length} nodes, ${links.length} links`);
-            return { nodes, links };
+        // Log final counts and verify data
+        console.log(`Final structural network: ${nodes.length} nodes, ${links.length} links`);
+        
+        // Verify that all link sources and targets exist as nodes
+        const invalidLinks = links.filter(link => {
+            return !nodeMap.has(link.source) || !nodeMap.has(link.target);
+        });
+        
+        if (invalidLinks.length > 0) {
+            console.warn(`Found ${invalidLinks.length} invalid links with missing nodes`);
+            // Filter out invalid links
+            const validLinks = links.filter(link => nodeMap.has(link.source) && nodeMap.has(link.target));
+            console.log(`Filtered to ${validLinks.length} valid links`);
+            links = validLinks;
         }
+        
+        if (nodes.length > 0 && links.length > 0) {
+            // Create a set of all connected node IDs
+            const connectedNodeIds = new Set();
+            
+            // Add all nodes that appear in links
+            links.forEach(link => {
+                const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+                const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+                connectedNodeIds.add(sourceId);
+                connectedNodeIds.add(targetId);
+            });
+            
+            // Filter nodes to only include those with connections
+            // Exception: if there are no links at all, show all protein nodes
+            const filteredNodes = links.length > 0 
+                ? nodes.filter(node => connectedNodeIds.has(node.id)) 
+                : nodes.filter(node => node.type === 'protein');
+            
+            console.log(`Filtered from ${nodes.length} nodes to ${filteredNodes.length} connected nodes`);
+            
+            return { nodes: filteredNodes, links };
+        }
+
+
         
         return null;
     } catch (error) {
         console.error("Error extracting structural network data:", error);
+        console.error(error.stack); // Add stack trace for better debugging
         return null;
     }
 }
+
 
 // Function to filter network by RMSD threshold
 // Function to filter network by RMSD threshold
@@ -678,6 +790,7 @@ function updateNetworkFilter() {
     if (!window.networkNodes || !window.networkLinks) return;
     
     const threshold = parseFloat(document.getElementById('rmsd-filter').value);
+    console.log(`Filtering network with RMSD threshold: ${threshold}`);
     
     // Filter links by RMSD
     window.networkLinks.style('display', function(d) {

@@ -837,10 +837,15 @@ def phosphosite_analysis():
                     
                     # Get matches from optimized database query
                     sequence_matches_batch = find_sequence_matches_batch(site_ids, min_similarity=0.3)
-                    
+                    print("SEQUENCE MATCHES BATCH")
+                    print(sequence_matches_batch)
+
+
                     # Enhance all matches in a single batch operation
                     enhanced_matches_batch = enhance_sequence_matches_batch(sequence_matches_batch)
-                    
+                    print("ENHANCED MATCHES BATCH")
+                    print(enhanced_matches_batch)
+
                     # Organize matches by site for display
                     sequence_matches = {}
                     for site in results['phosphosites']:
@@ -974,7 +979,8 @@ def phosphosite_analysis():
                                     match['nearby_count'] = 6
                                 if math.isnan(match.get('surface_accessibility', 0)):
                                     match['surface_accessibility'] = 50
-            
+            print("RESULTS SEQUENCE MATCHES")
+            print(results['sequence_matches'])
             # Return results including enhanced data and network visualizations
             return render_template('phosphosite.html', 
                                   protein_info=results['protein_info'],
