@@ -431,7 +431,7 @@ function extractSequenceNetworkData(proteinUniprotId) {
             // Create node with all available data
             const node = {
                 id: nodeId,
-                name: site.site || `${site.siteType || 'S'}${site.resno}`,
+                name: nodeId || `${site.siteType || 'S'}${site.resno}`,
                 uniprot: proteinUniprotId,
                 type: 'protein',
                 is_known: site.is_known === true || site.is_known === 1,
