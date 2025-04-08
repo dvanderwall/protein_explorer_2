@@ -30,158 +30,6 @@ def create_phosphosite_network_visualization(protein_uniprot_id, phosphosites=No
         HTML string with network visualization
     """
     # Process phosphosites to extract kinase information
-    processed_phosphosites = []
-    if phosphosites:
-        for site in phosphosites:
-            # Skip Y (tyrosine) sites - for consistency with sequence network
-            if 'site' in site and site['site'] and site['site'][0] == 'Y':
-                continue
-                
-            site_copy = site.copy()
-            
-            # Ensure is_known flags are properly set
-            if 'is_known' in site:
-                site_copy['is_known'] = bool(site['is_known'])
-                
-            if 'is_known_phosphosite' in site:
-                site_copy['is_known_phosphosite'] = float(site['is_known_phosphosite'])
-            elif 'is_known' in site:
-                site_copy['is_known_phosphosite'] = 1.0 if site['is_known'] else 0.0
-                
-            # Add all known kinase information 
-            known_kinases = []
-            for i in range(1, 6):
-                kinase_field = f"KINASE_{i}"
-                if kinase_field in site and site[kinase_field] and site[kinase_field] != 'unlabeled':
-                    known_kinases.append(site[kinase_field])
-                    
-            # Also check known_kinase field
-            if 'known_kinase' in site and site['known_kinase'] and site['known_kinase'] != 'unlabeled':
-                # Handle case where known_kinase might be a comma-separated list
-                if isinstance(site['known_kinase'], str) and ',' in site['known_kinase']:
-                    kinase_values = [k.strip() for k in site['known_kinase'].split(',')]
-                    known_kinases.extend(kinase_values)
-                else:
-                    known_kinases.append(site['known_kinase'])
-                
-            # Store unique non-empty kinases as a comma-separated string
-            if known_kinases:
-                # Remove duplicates while preserving order
-                unique_kinases = []
-                seen = set()
-                for kinase in known_kinases:
-                    if kinase and kinase not in seen:
-                        seen.add(kinase)
-                        unique_kinases.append(kinase)
-                
-                site_copy['knownKinase'] = ', '.join(unique_kinases)
-                
-            processed_phosphosites.append(site_copy)
-    
-    # Process structural matches to enhance with kinase data and other supplementary information
-    processed_matches = {}
-    all_target_ids = set()  # Collect all target IDs for batch query
-    
-    # First pass - collect all target IDs
-    if structural_matches:
-        for site_name, matches in structural_matches.items():
-            # Skip Y (tyrosine) sites
-            if site_name and site_name[0] == 'Y':
-                continue
-                
-            for match in matches:
-                # Skip matches with Y sites
-                if match.get('target_site', '')[0] == 'Y':
-                    continue
-                
-                # Get target info and create target_id
-                target_uniprot = match.get('target_uniprot')
-                target_site = match.get('target_site')
-                
-                if target_uniprot and target_site:
-                    # Extract just the number from the target site
-                    target_resno = ''.join(filter(str.isdigit, target_site))
-                    if target_resno:
-                        target_id = f"{target_uniprot}_{target_resno}"
-                        all_target_ids.add(target_id)
-    
-    # Batch fetch supplementary data for all target sites
-    supplementary_data = {}
-    if all_target_ids:
-        try:
-            logger.info(f"Fetching supplementary data for {len(all_target_ids)} target sites")
-            supplementary_data = get_phosphosites_batch(list(all_target_ids))
-            logger.info(f"Retrieved data for {len(supplementary_data)} target sites")
-        except Exception as e:
-            logger.error(f"Error fetching supplementary data: {e}")
-    
-    # Second pass - enhance matches with the supplementary data
-    if structural_matches:
-        for site_name, matches in structural_matches.items():
-            # Skip Y (tyrosine) sites
-            if site_name and site_name[0] == 'Y':
-                continue
-                
-            processed_site_matches = []
-            for match in matches:
-                # Skip matches with Y sites
-                if match.get('target_site', '')[0] == 'Y':
-                    continue
-                
-                match_copy = match.copy()
-                
-                # Get target info
-                target_uniprot = match.get('target_uniprot')
-                target_site = match.get('target_site')
-                
-                # Extract kinase and other info from supplementary data
-                target_resno = ''.join(filter(str.isdigit, target_site))
-                target_id = f"{target_uniprot}_{target_resno}" if target_uniprot and target_resno else None
-                
-                if target_id and target_id in supplementary_data:
-                    target_data = supplementary_data[target_id]
-                    
-                    # Extract all known kinase information, not just the first one
-                    known_kinases = []
-                    for j in range(1, 6):
-                        kinase_field = f"KINASE_{j}"
-                        if kinase_field in target_data and target_data[kinase_field] and target_data[kinase_field] != 'unlabeled':
-                            known_kinases.append(target_data[kinase_field])
-                    
-                    # Also check for known_kinase
-                    if 'known_kinase' in target_data and target_data['known_kinase'] and target_data['known_kinase'] != 'unlabeled':
-                        # Handle case where known_kinase might be a comma-separated list
-                        if isinstance(target_data['known_kinase'], str) and ',' in target_data['known_kinase']:
-                            kinase_values = [k.strip() for k in target_data['known_kinase'].split(',')]
-                            known_kinases.extend(kinase_values)
-                        else:
-                            known_kinases.append(target_data['known_kinase'])
-                    
-                    # Store unique non-empty kinases as a comma-separated string
-                    if known_kinases:
-                        # Remove duplicates while preserving order
-                        unique_kinases = []
-                        seen = set()
-                        for kinase in known_kinases:
-                            if kinase and kinase not in seen:
-                                seen.add(kinase)
-                                unique_kinases.append(kinase)
-                        
-                        # Set known_kinase in match data
-                        match_copy['known_kinase'] = ', '.join(unique_kinases)
-                    
-                    # Add additional supplementary data
-                    if 'SITE_+/-7_AA' in target_data and target_data['SITE_+/-7_AA']:
-                        match_copy['motif'] = target_data['SITE_+/-7_AA']
-                    
-                    for field in ['site_plddt', 'mean_plddt', 'nearby_count', 'surface_accessibility']:
-                        if field in target_data and target_data[field] is not None:
-                            match_copy[field] = target_data[field]
-                
-                processed_site_matches.append(match_copy)
-                
-            if processed_site_matches:
-                processed_matches[site_name] = processed_site_matches
     
     # Create HTML for the visualization
     html = """
@@ -199,14 +47,14 @@ def create_phosphosite_network_visualization(protein_uniprot_id, phosphosites=No
                     class="form-range" 
                     id="rmsd-filter" 
                     min="0.1" 
-                    max="3.0" 
+                    max="10.0" 
                     step="0.1" 
-                    value="1.0"
+                    value="4.0"
                     oninput="document.getElementById('rmsd-value').textContent = this.value + ' Å'; updateNetworkFilter();"
                 >
                 <div class="d-flex justify-content-between">
-                    <small>0.5 Å (Very similar)</small>
-                    <small>5.0 Å (Less similar)</small>
+                    <small>0.1 Å (Very similar)</small>
+                    <small>10.0 Å (Less similar)</small>
                 </div>
             </div>
             
@@ -247,6 +95,7 @@ def create_phosphosite_network_visualization(protein_uniprot_id, phosphosites=No
     <div id="structural-match-data" style="display: none;" data-matches='"""
     
     # Convert processed matches to JSON with proper handling
+    processed_matches = structural_matches 
     try:
         matches_json = json.dumps(processed_matches)
     except Exception as json_err:
@@ -259,6 +108,8 @@ def create_phosphosite_network_visualization(protein_uniprot_id, phosphosites=No
     <div id="phosphosites-data" style="display: none;" data-sites='"""
     
     # Convert phosphosites to JSON
+    processed_phosphosites = phosphosites
+
     try:
         sites_json = json.dumps(processed_phosphosites) if processed_phosphosites else '[]'
     except Exception as json_err:

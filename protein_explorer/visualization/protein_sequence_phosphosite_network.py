@@ -159,6 +159,10 @@ def create_sequence_network_visualization(protein_uniprot_id, phosphosites=None,
         logger.error(traceback.format_exc())
         processed_matches = {}
     
+
+    print('JSONIFIED PROCESSED MATCHES')
+    print(processed_matches)
+
     # Create network visualization HTML
     html = """
     <div class="card mb-4">
@@ -175,9 +179,9 @@ def create_sequence_network_visualization(protein_uniprot_id, phosphosites=None,
                     class="form-range" 
                     id="similarity-filter" 
                     min="0.3" 
-                    max="0.9" 
+                    max="0.99" 
                     step="0.05" 
-                    value="0.6"
+                    value="0.01"
                     oninput="document.getElementById('similarity-value').textContent = this.value; updateSequenceNetworkFilter();"
                 >
                 <div class="d-flex justify-content-between">
@@ -264,7 +268,8 @@ def create_sequence_network_visualization(protein_uniprot_id, phosphosites=None,
                     site_copy['knownKinase'] = kinase_info
                 
                 processed_sites.append(site_copy)
-                
+            print("JSONIFIED PHOSPHOSITES")
+            print(processed_sites)
             sites_json = json.dumps(processed_sites)
         except Exception as sites_err:
             logger.error(f"Error converting phosphosites to JSON: {sites_err}")
@@ -299,6 +304,8 @@ def create_sequence_network_visualization(protein_uniprot_id, phosphosites=None,
     });
     </script>
     """
+    
+
     
     return html
 
