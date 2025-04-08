@@ -617,7 +617,7 @@ def api_network(uniprot_id):
 
 @app.route('/phosphosite', methods=['GET', 'POST'])
 def phosphosite_analysis():
-    """Phosphosite structural analysis page with improved error handling and supplementary data."""
+    """Phosphosite structural analysis page leveraging improved database structure."""
     
     # Import enhanced table function
     from protein_explorer.analysis.enhanced_table import enhance_phosphosite_table
@@ -664,209 +664,196 @@ def phosphosite_analysis():
                 'error': None
             }
             
-            # Try to get phosphosites
             try:
-                # Get sequence
-                sequence = protein_data.get('metadata', {}).get('sequence', {}).get('value')
-                if not sequence:
-                    raise ValueError(f"Protein sequence not found for {uniprot_id}")
+                # STEP 1: Directly query STY_Structural_Annotations for this protein's phosphosites
+                from protein_explorer.db.db import find_structural_annotations_by_uniprot
+                
+                # Get all phosphosite annotations for this protein
+                structural_annotations = find_structural_annotations_by_uniprot(uniprot_id)
+                
+                if not structural_annotations:
+                    logger.warning(f"No structural annotations found for {uniprot_id}")
+                    # Fall back to sequence info if available
+                    sequence = protein_data.get('metadata', {}).get('sequence', {}).get('value')
+                    if sequence:
+                        # Get structure for fallback analysis if needed
+                        structure = pe.data.get_alphafold_structure(uniprot_id)
+                        if structure:
+                            # Use traditional analysis as fallback
+                            phosphosites = pe.analysis.phospho.analyze_phosphosites(sequence, structure, uniprot_id)
+                            results['phosphosites'] = phosphosites
+                            results['error'] = "Using basic phosphosite analysis (structural annotations not available)"
+                else:
+                    logger.info(f"Found {len(structural_annotations)} structural annotations for {uniprot_id}")
                     
-                # Get structure
-                structure = pe.data.get_alphafold_structure(uniprot_id)
-                if not structure:
-                    raise ValueError(f"Protein structure not found for {uniprot_id}")
-                
-                # Analyze phosphosites
-                phosphosites = pe.analysis.phospho.analyze_phosphosites(sequence, structure, uniprot_id)
-                
-                # Get site IDs for batch lookup
-                site_ids = [f"{uniprot_id}_{site['resno']}" for site in phosphosites]
-                
-                # Batch retrieve supplementary data
-                supp_data_dict = get_phosphosites_batch(site_ids)
-                
-                # Enhance phosphosites with database data
-                enhanced_sites = []
-                for site in phosphosites:
-                    site_id = f"{uniprot_id}_{site['resno']}"
-                    supp_data = supp_data_dict.get(site_id)
+                    # STEP 2: Convert structural annotations to phosphosite format
+                    phosphosites = []
+                    site_ids = []
                     
-                    if supp_data:
-                        # Create enhanced site
-                        enhanced_site = site.copy()
+                    # First, create all phosphosite objects and collect site IDs
+                    for annotation in structural_annotations:
+                        # Map fields from STY_Structural_Annotations to the expected format
+                        phosphosite = {
+                            'site': annotation.get('Site', ''),
+                            'resno': int(annotation.get('ResidueNumber', 0)),
+                            'siteType': annotation.get('ResidueType', ''),
+                            'motif': annotation.get('Motif', ''),
+                            'mean_plddt': annotation.get('pLDDT', 0),
+                            'site_plddt': annotation.get('pLDDT', 0),
+                            'meanPLDDT': annotation.get('pLDDT', 0),
+                            'nearby_count': annotation.get('NeighborCount', 0),
+                            'nearbyCount': annotation.get('NeighborCount', 0),
+                            'surface_accessibility': annotation.get('HydroxylExposure', 0) * 100,
+                            'surfaceAccessibility': annotation.get('HydroxylExposure', 0) * 100,
+                            'acidic_aa_percent': annotation.get('negative_count', 0) / max(1, annotation.get('NeighborCount', 1)) * 100,
+                            'acidicPercentage': annotation.get('negative_count', 0) / max(1, annotation.get('NeighborCount', 1)) * 100,
+                            'basic_aa_percent': annotation.get('positive_count', 0) / max(1, annotation.get('NeighborCount', 1)) * 100,
+                            'basicPercentage': annotation.get('positive_count', 0) / max(1, annotation.get('NeighborCount', 1)) * 100,
+                            'hydrophobicityScore': annotation.get('hydrophobic_ratio', 0.5) * 100
+                        }
                         
-                        # Add supplementary data fields
-                        for key, value in supp_data.items():
-                            if value is not None:
-                                # Map database field names to our field names
-                                if key == 'SITE_+/-7_AA' and 'motif' not in enhanced_site:
-                                    enhanced_site['motif'] = value
-                                elif key == 'site_plddt' and 'mean_plddt' not in enhanced_site:
-                                    enhanced_site['mean_plddt'] = value
-                                elif key == 'nearby_count' and 'nearby_count' not in enhanced_site:
-                                    enhanced_site['nearby_count'] = value
-                                elif key not in enhanced_site:
-                                    enhanced_site[key] = value
+                        # Construct the PhosphositeID properly
+                        site_id = f"{uniprot_id}_{annotation.get('ResidueNumber', '')}"
+                        phosphosite['site_id'] = site_id  # Store for later reference
                         
-                        enhanced_sites.append(enhanced_site)
-                    else:
-                        enhanced_sites.append(site)
+                        phosphosites.append(phosphosite)
+                        site_ids.append(site_id)
+                    
+                    # STEP 3: Now do a batch query for all phosphosite supplementary data
+                    from protein_explorer.db.db import get_phosphosites_batch
+                    supp_data_dict = get_phosphosites_batch(site_ids)
+                    logger.info(f"Retrieved supplementary data for {len(supp_data_dict)} out of {len(site_ids)} phosphosites")
+                    
+                    # Add supplementary data to each phosphosite
+                    for phosphosite in phosphosites:
+                        site_id = phosphosite['site_id']
+                        supp_data = supp_data_dict.get(site_id)
+                        
+                        if supp_data:
+                            phosphosite['is_known'] = supp_data.get('is_known_phosphosite', False)
+                            phosphosite['is_known_phosphosite'] = supp_data.get('is_known_phosphosite', 0)
+                            
+                            # Add kinase information if available
+                            known_kinases = []
+                            for i in range(1, 6):
+                                kinase_field = f"KINASE_{i}"
+                                if kinase_field in supp_data and supp_data[kinase_field] and supp_data[kinase_field] != 'unlabeled':
+                                    known_kinases.append(supp_data[kinase_field])
+                            
+                            if known_kinases:
+                                phosphosite['known_kinase'] = ', '.join(known_kinases)
+                        else:
+                            phosphosite['is_known'] = False
+                            phosphosite['is_known_phosphosite'] = 0
+                    
+                    results['phosphosites'] = phosphosites
                 
-                results['phosphosites'] = enhanced_sites
-                
-                # Try to find structural matches
-                try:
-                    # Batch query for structural matches
+                # STEP 4: Find structural matches for phosphosites using site_ids
+                if results['phosphosites']:
+                    # Create site_ids for batch query if not already created
+                    if not site_ids:
+                        site_ids = [f"{uniprot_id}_{site['resno']}" for site in results['phosphosites']]
+                    
+                    # Use the batch function that leverages the database
+                    from protein_explorer.db.db import find_structural_matches_batch
                     all_matches = find_structural_matches_batch(site_ids, rmsd_threshold=4.0)
-                    # Organize by site
+                    
+                    # Create a dictionary of target IDs for batch lookup
+                    target_ids = set()
+                    for matches in all_matches.values():
+                        for match in matches:
+                            target_id = match.get('target_id')
+                            if target_id:
+                                target_ids.add(target_id)
+                    
+                    # Get structural annotations for all target sites in batch
+                    from protein_explorer.db.db import get_structural_annotations_batch
+                    target_annotations = {}
+                    if target_ids:
+                        target_annotations = get_structural_annotations_batch(list(target_ids))
+                        logger.info(f"Retrieved {len(target_annotations)} structural annotations for target sites")
+                    
+                    # Get supplementary data for target sites in batch
+                    target_supp_data = get_phosphosites_batch(list(target_ids))
+                    logger.info(f"Retrieved supplementary data for {len(target_supp_data)} target sites")
+                    
+                    # Now enhance the matches with complete structural annotation data
                     structural_matches = {}
-                    for site in phosphosites:
+                    for site in results['phosphosites']:
                         site_id = f"{uniprot_id}_{site['resno']}"
                         if site_id in all_matches:
                             matches = all_matches[site_id]
-                            # Skip empty lists
                             if matches:
-                                # Enhance with supplementary data
-                                enhanced_matches = enhance_structural_matches(matches, site['site'])
+                                enhanced_matches = []
+                                for match in matches:
+                                    # Create enhanced copy
+                                    enhanced_match = match.copy()
+                                    
+                                    # Get target structural annotation data
+                                    target_id = match.get('target_id')
+                                    if target_id and target_id in target_annotations:
+                                        annotation = target_annotations[target_id]
+                                        
+                                        # Replace with actual structural annotation data
+                                        enhanced_match['site_plddt'] = annotation.get('pLDDT', enhanced_match.get('site_plddt', 0))
+                                        enhanced_match['motif'] = annotation.get('Motif', enhanced_match.get('motif', '')).upper()
+                                        enhanced_match['nearby_count'] = annotation.get('NeighborCount', enhanced_match.get('nearby_count', 0))
+                                        enhanced_match['surface_accessibility'] = annotation.get('HydroxylExposure', 0) * 100
+                                        
+                                        # Add other valuable structural data
+                                        enhanced_match['secondary_structure'] = annotation.get('SecondaryStructure', '')
+                                        enhanced_match['hydrophobic_ratio'] = annotation.get('hydrophobic_ratio', 0)
+                                        enhanced_match['negative_count'] = annotation.get('negative_count', 0)
+                                        enhanced_match['positive_count'] = annotation.get('positive_count', 0)
+                                    
+                                    # Add kinase and known status from supplementary data
+                                    if target_id and target_id in target_supp_data:
+                                        supp = target_supp_data[target_id]
+                                        
+                                        # Add known phosphosite status
+                                        enhanced_match['is_known_phosphosite'] = supp.get('is_known_phosphosite', 0)
+                                        
+                                        # Extract kinase information
+                                        known_kinases = []
+                                        for i in range(1, 6):
+                                            kinase_field = f"KINASE_{i}"
+                                            if kinase_field in supp and supp[kinase_field] and supp[kinase_field] != 'unlabeled':
+                                                known_kinases.append(supp[kinase_field])
+                                        
+                                        if known_kinases:
+                                            enhanced_match['known_kinase'] = ', '.join(known_kinases)
+                                    
+                                    enhanced_matches.append(enhanced_match)
+                                
                                 structural_matches[site['site']] = enhanced_matches
                     
                     results['structural_matches'] = structural_matches
-
-
-                    # Updates to add to app_2.py in the phosphosite_analysis function
-                    # This should go in the block that processes structural matches
-                    # After structural_matches is populated, implement additional processing to enhance matches with kinase data
-                    if structural_matches:
-                        # Get all target site IDs for batch query
-                        target_ids = []
-                        for site_matches in structural_matches.values():
-                            for match in site_matches:
-                                target_uniprot = match.get('target_uniprot')
-                                target_site = match.get('target_site')
-                                
-                                # Extract number from the target site
-                                if target_uniprot and target_site:
-                                    target_resno = ''.join(filter(str.isdigit, target_site))
-                                    if target_resno:
-                                        target_id = f"{target_uniprot}_{target_resno}"
-                                        target_ids.append(target_id)
-                        
-                        # Batch retrieve supplementary data for target sites
-                        if target_ids:
-                            try:
-                                target_supp_data = get_phosphosites_batch(target_ids)
-                                
-                                # Enhance matches with supplementary data
-                                for site_name, site_matches in structural_matches.items():
-                                    for i, match in enumerate(site_matches):
-                                        target_uniprot = match.get('target_uniprot')
-                                        target_site = match.get('target_site')
-                                        
-                                        # Skip if missing target info
-                                        if not target_uniprot or not target_site:
-                                            continue
-                                        
-                                        # Extract number from the target site
-                                        target_resno = ''.join(filter(str.isdigit, target_site))
-                                        if not target_resno:
-                                            continue
-                                        
-                                        # Create target ID
-                                        target_id = f"{target_uniprot}_{target_resno}"
-                                        
-                                        # Check if we have supplementary data
-                                        if target_id in target_supp_data:
-                                            supp_data = target_supp_data[target_id]
-                                            
-                                            # Extract kinase information
-                                            known_kinase = None
-                                            for j in range(1, 6):
-                                                kinase_field = f"KINASE_{j}"
-                                                if kinase_field in supp_data and supp_data[kinase_field] and supp_data[kinase_field] != 'unlabeled':
-                                                    known_kinase = supp_data[kinase_field]
-                                                    break
-                                            
-                                            # Add known kinase to match data
-                                            if known_kinase:
-                                                match['target_known_kinase'] = known_kinase
-                                            
-                                            # Add other supplementary fields
-                                            if 'SITE_+/-7_AA' in supp_data and supp_data['SITE_+/-7_AA']:
-                                                match['motif'] = supp_data['SITE_+/-7_AA']
-                                            
-                                            for field in ['site_plddt', 'mean_plddt', 'nearby_count', 'surface_accessibility']:
-                                                if field in supp_data and supp_data[field] is not None:
-                                                    match[field] = supp_data[field]
-                            except Exception as e:
-                                logger.error(f"Error enhancing structural matches with supplementary data: {e}")
-                except Exception as e:
-                    logger.error(f"Error analyzing structural matches: {e}")
-                    results['error'] = f"Error analyzing structural matches: {str(e)}"
                 
-                # Try to find sequence similarity matches
-                try:
-                    # Direct use of batch query without additional complexity
-                    sequence_matches_batch = find_sequence_matches_batch(site_ids, min_similarity=0.3)
-                    
-                    # Import the new batch enhancement function
+                # STEP 5: Find sequence similarity matches for phosphosites
+                if results['phosphosites']:
+                    # Use site_ids created above
+                    from protein_explorer.db.db import find_sequence_matches_batch
                     from protein_explorer.analysis.sequence_analyzer_2 import enhance_sequence_matches_batch
+                    
+                    # Get matches from optimized database query
+                    sequence_matches_batch = find_sequence_matches_batch(site_ids, min_similarity=0.3)
                     
                     # Enhance all matches in a single batch operation
                     enhanced_matches_batch = enhance_sequence_matches_batch(sequence_matches_batch)
                     
                     # Organize matches by site for display
                     sequence_matches = {}
-                    for site_id, matches in enhanced_matches_batch.items():
-                        # Skip empty match lists
-                        if not matches:
-                            continue
-                        
-                        print(f"Processing site_id: {site_id} with {len(matches)} matches")
-                        
-                        # Get the site name from the site_id
-                        site_parts = site_id.split('_')
-                        
-                        if len(site_parts) >= 2:
-                            uniprot_id = site_parts[0]
-                            site_num = site_parts[1]
-                            
-                            # Try to find site type from the matches
-                            site_type = None
-                            
-                            # Look for site_type in the matches
-                            for match in matches:
-                                # Check if this is a match with valid site_type
-                                match_site_type = match.get('site_type')
-                                if match_site_type and match_site_type in 'STY':
-                                    site_type = match_site_type
-                                    break
-                            
-                            # If not found in matches, try to find from phosphosites data
-                            if not site_type:
-                                for site in phosphosites:
-                                    if str(site.get('resno')) == str(site_num):
-                                        site_type = site.get('siteType') or site.get('site', 'S')[0]
-                                        break
-                            
-                            # If we still couldn't find the site type, default to 'S'
-                            if not site_type:
-                                site_type = 'S'
-                                
-                            # Create the site name with the letter prefix
-                            site_name = f"{site_type}{site_num}"
-                            
-                            # Add matches to the dictionary
-                            sequence_matches[site_name] = matches
-                            print(f"Added {len(matches)} matches for site {site_name} from {site_id}")
+                    for site in results['phosphosites']:
+                        site_id = f"{uniprot_id}_{site['resno']}"
+                        if site_id in enhanced_matches_batch:
+                            matches = enhanced_matches_batch[site_id]
+                            if matches:  # Skip empty match lists
+                                site_name = site['site']
+                                sequence_matches[site_name] = matches
                     
-                    results['sequence_matches'] = sequence_matches
-                    # Log the result
-                    logger.info(f"Processed sequence similarity matches for {len(sequence_matches)} sites")
-                    
-                    # Collect sites that don't have sequence matches for BLOSUM scoring
+                    # Check for sites that don't have sequence matches for BLOSUM scoring
                     unmatched_sites = []
-                    print("FINDING UNMATCHESD SITES")
-                    for site in phosphosites:
+                    for site in results['phosphosites']:
                         # Skip Tyrosine (Y) sites as we do with the regular sequence matches
                         if site.get('site', '')[0] == 'Y':
                             continue
@@ -877,73 +864,55 @@ def phosphosite_analysis():
                             # Only include sites with valid motifs (no underscores)
                             if 'motif' in site and site['motif'] and '_' not in site['motif']:
                                 unmatched_sites.append(site)
-                    print("FOUND UNMATCHED SITES")
-                    logger.info(f"Found {len(unmatched_sites)} unmatched sites with motifs for BLOSUM scoring")
                     
-                    # Find BLOSUM matches for unmatched sites
+                    # Find BLOSUM matches for unmatched sites if needed
                     if unmatched_sites:
-                        # Use the same minimum similarity threshold as for regular sequence matches
-                        min_similarity = 0.3  # Adjust this to match your existing threshold
-                        
-                        # Get BLOSUM matches
-                        print("STARTING BLOSUM MATCHES")
-                        blosum_matches = find_blosum_matches_batch_optimized(unmatched_sites, min_similarity)
-                        print("FINISHED BLOSUM MATCHES")
-
-                        logger.info(f"Found BLOSUM matches for {len(blosum_matches)} previously unmatched sites")
-                        print("ENHANCING BLOSSUM MATCHES")
-                        blosum_enhanced = enhance_sequence_matches_batch(blosum_matches)
-                        print("BLOSSUM MATCHES ENHANCED")
-                        print(blosum_enhanced)
-                        # Combine with existing sequence matches
-                        if not sequence_matches:
-                            sequence_matches = {}
+                        try:
+                            # Use the same minimum similarity threshold as for regular sequence matches
+                            min_similarity = 0.3
                             
-                        # Add BLOSUM matches to sequence_matches dictionary
-                        for key, matches in blosum_enhanced.items():
-                            if key in sequence_matches:
-                                # Add to existing matches
-                                #print("MATCHES")
-                                #print(matches)
-                                for match in matches:
-                                    if match['target_uniprot'] is None:
-                                        match['target_uniprot'] = match['target_id'].split('_')[0]
-                                sequence_matches[key].extend(matches)
-                                # Re-sort by similarity
-                                sequence_matches[key].sort(key=lambda x: x['similarity'], reverse=True)
-                            else:
-                                # Create new entry
-                                #print("MATCHES")
-                                #print(matches)
-                                for match in matches:
-                                    if match['target_uniprot'] is None:
-                                        match['target_uniprot'] = match['target_id'].split('_')[0]
-                                sequence_matches[key] = matches
+                            # Get BLOSUM matches
+                            blosum_matches = find_blosum_matches_batch_optimized(unmatched_sites, min_similarity)
+                            
+                            if blosum_matches:
+                                blosum_enhanced = enhance_sequence_matches_batch(blosum_matches)
                                 
-                        # Update results
-                        results['sequence_matches'] = sequence_matches
-                        
-                except Exception as e:
-                    logger.error(f"Error processing BLOSUM sequence matches: {e}")
-                    import traceback
-                    logger.error(traceback.format_exc())
-                    # Continue without BLOSUM matches if there's an error
+                                # Combine with existing sequence matches
+                                if not sequence_matches:
+                                    sequence_matches = {}
+                                    
+                                # Add BLOSUM matches to sequence_matches dictionary
+                                for key, matches in blosum_enhanced.items():
+                                    if key in sequence_matches:
+                                        # Add to existing matches
+                                        for match in matches:
+                                            if match['target_uniprot'] is None:
+                                                match['target_uniprot'] = match['target_id'].split('_')[0]
+                                        sequence_matches[key].extend(matches)
+                                        # Re-sort by similarity
+                                        sequence_matches[key].sort(key=lambda x: x['similarity'], reverse=True)
+                                    else:
+                                        # Create new entry
+                                        for match in matches:
+                                            if match['target_uniprot'] is None:
+                                                match['target_uniprot'] = match['target_id'].split('_')[0]
+                                        sequence_matches[key] = matches
+                        except Exception as e:
+                            logger.error(f"Error processing BLOSUM sequence matches: {e}")
+                            import traceback
+                            logger.error(traceback.format_exc())
                     
-                except Exception as e:
-                    logger.error(f"Error analyzing sequence similarity matches: {e}")
-                    import traceback
-                    logger.error(traceback.format_exc())
-                    # Continue without sequence matches
-                    results['error'] = f"{results.get('error', '')} Error analyzing sequence matches: {str(e)}"
+                    results['sequence_matches'] = sequence_matches
                 
             except Exception as e:
                 logger.error(f"Error analyzing phosphosites: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
                 results['error'] = f"Error analyzing phosphosites: {str(e)}"
             
             # Use enhanced table function for display
             if results['phosphosites']:
                 # Create enhanced HTML for the phosphosites
-                print("CREATING STRUCTURAL NETWORK VISUALIZATION")
                 phosphosites_html = enhance_phosphosite_table(
                     results['phosphosites'], 
                     results['protein_info']['uniprot_id']
@@ -961,21 +930,50 @@ def phosphosite_analysis():
             
             # Generate sequence similarity network visualization
             from protein_explorer.visualization.protein_sequence_phosphosite_network import create_sequence_network_visualization
-            print("CREATING SEQUENCE NETWORK VISUALIZATION")
-            print(results['sequence_matches'])
-            for key,matches in results['sequence_matches'].items():
-                for match in matches:
-                    if (math.isnan(match['site_plddt']) or math.isnan(match['nearby_count']) or  math.isnan(match['surface_accessibility'])):
-                        uniprot_to_query = match['target_uniprot']
-                        structure = get_alphafold_structure(uniprot_to_query)
-                        if structure is not None:
-                            context_data = analyze_phosphosite_context(structure,match['target_id'].split("_")[1], match['site_type'])
-
+            
             sequence_network_visualization = create_sequence_network_visualization(
                 results['protein_info']['uniprot_id'],
                 results['phosphosites'],
                 results['sequence_matches']
             )
+            
+            # Fill missing values for sequence match display if needed
+            if results['sequence_matches']:
+                for site_name, matches in results['sequence_matches'].items():
+                    for match in matches:
+                        if math.isnan(match.get('site_plddt', 0)) or math.isnan(match.get('nearby_count', 0)) or math.isnan(match.get('surface_accessibility', 0)):
+                            try:
+                                # Try to get structural data from STY_Structural_Annotations
+                                from protein_explorer.db.db import get_structural_annotations
+                                target_uniprot = match['target_uniprot']
+                                target_site_number = match['target_id'].split('_')[1]
+                                target_annotation = get_structural_annotations(match['target_id'])
+                                
+                                if target_annotation:
+                                    # Fill in missing data from annotation
+                                    if math.isnan(match.get('site_plddt', 0)):
+                                        match['site_plddt'] = target_annotation.get('pLDDT', 50)
+                                    if math.isnan(match.get('nearby_count', 0)):
+                                        match['nearby_count'] = target_annotation.get('NeighborCount', 6)
+                                    if math.isnan(match.get('surface_accessibility', 0)):
+                                        match['surface_accessibility'] = target_annotation.get('HydroxylExposure', 0.5) * 100
+                                else:
+                                    # Fallback to default values if annotation not found
+                                    if math.isnan(match.get('site_plddt', 0)):
+                                        match['site_plddt'] = 50
+                                    if math.isnan(match.get('nearby_count', 0)):
+                                        match['nearby_count'] = 6
+                                    if math.isnan(match.get('surface_accessibility', 0)):
+                                        match['surface_accessibility'] = 50
+                            except Exception as err:
+                                # Set defaults if error occurs
+                                logger.error(f"Error filling missing values: {err}")
+                                if math.isnan(match.get('site_plddt', 0)):
+                                    match['site_plddt'] = 50
+                                if math.isnan(match.get('nearby_count', 0)):
+                                    match['nearby_count'] = 6
+                                if math.isnan(match.get('surface_accessibility', 0)):
+                                    match['surface_accessibility'] = 50
             
             # Return results including enhanced data and network visualizations
             return render_template('phosphosite.html', 
@@ -990,6 +988,8 @@ def phosphosite_analysis():
                 
         except Exception as e:
             print(f"Error in phosphosite analysis: {e}")
+            import traceback
+            print(traceback.format_exc())
             error = str(e)
             return render_template('phosphosite.html', error=error)
     
