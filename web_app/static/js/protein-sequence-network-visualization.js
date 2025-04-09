@@ -1,4 +1,3 @@
-
 /**
  * Enhanced Sequence Network Visualization
  * Creates an interactive visualization of phosphosite sequence similarity networks
@@ -294,7 +293,7 @@ function sequenceNetworkVisualization(proteinUniprotId) {
     console.log('Sequence network visualization setup complete');
 }
 
-// 1. Update the addNetworkLegend function to include all node types with correct colors
+// Function to add network legend with correct styling
 function addNetworkLegend(svg, width) {
     const legend = svg.append("g")
         .attr("class", "legend")
@@ -340,6 +339,7 @@ function addNetworkLegend(svg, width) {
         .attr("font-size", "12px");
 }
 
+// CORRECTED: This is the main function that extracts network data
 function extractSequenceNetworkData(proteinUniprotId) {
     try {
         console.log("Extracting sequence network data for", proteinUniprotId);
@@ -396,10 +396,13 @@ function extractSequenceNetworkData(proteinUniprotId) {
                     const motifCell = row.querySelector('td:nth-child(2) code');
                     if (motifCell) motif = motifCell.textContent.trim();
                     
+                    // CORRECTED: Extract site number correctly from string
+                    const resno = parseInt(siteName.substring(1));
+                    
                     // Create site data object
                     phosphositesData.push({
                         site: siteName,
-                        resno: parseInt(siteName.substring(1)),
+                        resno: resno,
                         siteType: siteType,
                         is_known: isKnown,
                         motif: motif
@@ -410,16 +413,29 @@ function extractSequenceNetworkData(proteinUniprotId) {
             }
         }
         
+        // CORRECTED: Make sure we have unique sites based on residue number
+        const uniquePhosphosites = new Map();
+        for (const site of phosphositesData) {
+            if (!site.resno) continue;
+            
+            // Only add the site if we don't already have it, or if the new one has more data
+            if (!uniquePhosphosites.has(site.resno) || 
+                (site.motif && !uniquePhosphosites.get(site.resno).motif)) {
+                uniquePhosphosites.set(site.resno, site);
+            }
+        }
+        
         // Step 3: Add all protein site nodes initially (excluding Tyrosine sites)
         // We'll filter out unconnected nodes later
         const tempNodes = [];
-        for (const site of phosphositesData) {
+        for (const site of uniquePhosphosites.values()) {
             // Skip Tyrosine (Y) sites as requested
             if (site.site && site.site[0] === 'Y') {
                 console.log(`Skipping Tyrosine site: ${site.site}`);
                 continue;
             }
             
+            // CORRECTED: Create consistent node ID using the resno
             const nodeId = `${proteinUniprotId}_${site.resno}`;
             
             // Skip if already added
@@ -431,7 +447,7 @@ function extractSequenceNetworkData(proteinUniprotId) {
             // Create node with all available data
             const node = {
                 id: nodeId,
-                name: nodeId || `${site.siteType || 'S'}${site.resno}`,
+                name: site.site || `${site.siteType || 'S'}${site.resno}`,
                 uniprot: proteinUniprotId,
                 type: 'protein',
                 is_known: site.is_known === true || site.is_known === 1,
@@ -465,15 +481,23 @@ function extractSequenceNetworkData(proteinUniprotId) {
                     const sanitizedJson = cleanJson(matchesJson);
                     const matchesData = JSON.parse(sanitizedJson);
                     
+                    // CORRECTED: Debug matches data structure
+                    console.log("Matches data keys:", Object.keys(matchesData));
+                    console.log("Example match data for first key:", 
+                               Object.keys(matchesData).length > 0 ? 
+                               matchesData[Object.keys(matchesData)[0]].slice(0, 1) : "No matches");
+                    
                     // Process the matches data
-                    if (matchesData) {
-                        console.log("Processing matches data:", Object.keys(matchesData));
-                        
+                    if (matchesData && typeof matchesData === 'object') {
                         // Cache of supplementary data to avoid duplicated requests
                         const suppDataCache = new Map();
                         
-                        // Process each site's matches
-                        for (const [siteName, matches] of Object.entries(matchesData)) {
+                        // CORRECTED: Process each site's matches explicitly
+                        for (const siteName in matchesData) {
+                            if (!matchesData.hasOwnProperty(siteName)) continue;
+                            
+                            const matches = matchesData[siteName];
+                            
                             // Skip if the site name starts with 'Y' (Tyrosine)
                             if (siteName && siteName[0] === 'Y') {
                                 console.log(`Skipping matches for Tyrosine site: ${siteName}`);
@@ -486,14 +510,29 @@ function extractSequenceNetworkData(proteinUniprotId) {
                                 continue;
                             }
                             
-                            // Get site info
-                            const siteType = siteName[0] || 'S';
-                            const siteNumber = parseInt(siteName.substring(1));
+                            console.log(`Processing ${matches.length} matches for site ${siteName}`);
+                            
+                            // CORRECTED: Parse the site number properly
+                            let siteNumber = null;
+                            if (siteName.includes('_')) {
+                                // Handle format like P04637_140
+                                siteNumber = parseInt(siteName.split('_')[1]);
+                            } else {
+                                // Handle format like S140
+                                const siteType = siteName[0];
+                                siteNumber = parseInt(siteName.substring(1));
+                            }
                             
                             // Skip invalid sites
-                            if (isNaN(siteNumber)) continue;
+                            if (isNaN(siteNumber)) {
+                                console.log(`Invalid site number in: ${siteName}`);
+                                continue;
+                            }
                             
-                            // Create node ID
+                            // Get site type from the site name (e.g., S, T)
+                            const siteType = siteName[0].match(/[A-Z]/) ? siteName[0] : 'S';
+                            
+                            // Create node ID for the source node
                             const nodeId = `${proteinUniprotId}_${siteNumber}`;
                             
                             // Find the protein node for this site
@@ -507,8 +546,14 @@ function extractSequenceNetworkData(proteinUniprotId) {
                                     if (match.query_motif) {
                                         motifInfo = match.query_motif;
                                         break;
+                                    } else if (match.motif) {
+                                        motifInfo = match.motif;
+                                        break;
                                     }
                                 }
+                                
+                                // CORRECTED: Extract site name consistently
+                                const siteName = `${siteType}${siteNumber}`;
                                 
                                 // Create the protein node
                                 proteinNode = {
@@ -531,17 +576,35 @@ function extractSequenceNetworkData(proteinUniprotId) {
                             }
                             
                             // Skip if we still don't have a valid protein node (e.g., for Tyrosine sites)
-                            if (!proteinNode) continue;
+                            if (!proteinNode) {
+                                console.log(`No protein node found for ${nodeId}`);
+                                continue;
+                            }
                             
-                            // Process the matches for this site
-                            console.log(`Processing ${matches.length} matches for site ${siteName}`);
-                            
+                            // CORRECTED: Process the matches for this site
                             for (const match of matches) {
+                                // Debug the match data
+                                if (match && typeof match === 'object') {
+                                    console.log(`Processing match:`, 
+                                              `source=${nodeId}`, 
+                                              `target=${match.target_id}`, 
+                                              `similarity=${match.similarity}`);
+                                } else {
+                                    console.log(`Invalid match data for ${siteName}:`, match);
+                                    continue;
+                                }
+                                
                                 // Skip if missing target_id
-                                if (!match.target_id) continue;
+                                if (!match.target_id) {
+                                    console.log("Missing target_id, skipping");
+                                    continue;
+                                }
                                 
                                 // Skip matches with Tyrosine site type
-                                if (match.site_type === 'Y' || 
+                                const targetSiteType = match.site_type || 
+                                                      (match.target_site && match.target_site[0] === 'Y' ? 'Y' : 'S');
+                                
+                                if (targetSiteType === 'Y' || 
                                     (match.target_site && match.target_site[0] === 'Y')) {
                                     console.log(`Skipping Tyrosine match: ${match.target_site}`);
                                     continue;
@@ -549,14 +612,20 @@ function extractSequenceNetworkData(proteinUniprotId) {
                                 
                                 // Get similarity and validate
                                 const similarity = parseFloat(match.similarity || 0);
-                                if (similarity < 0.0) continue;
+                                if (isNaN(similarity) || similarity <= 0.0) {
+                                    console.log(`Invalid similarity value: ${match.similarity}`);
+                                    continue;
+                                }
                                 
                                 const targetId = match.target_id;
                                 const targetUniprot = match.target_uniprot;
                                 const targetSite = match.target_site;
                                 
                                 // Skip self-references
-                                if (nodeId === targetId) continue;
+                                if (nodeId === targetId) {
+                                    console.log(`Skipping self-reference: ${nodeId}`);
+                                    continue;
+                                }
                                 
                                 // Mark this protein node as having connections
                                 proteinNode.hasConnections = true;
@@ -580,22 +649,31 @@ function extractSequenceNetworkData(proteinUniprotId) {
                                 
                                 // Check if this is a match within the same protein
                                 const isSameProtein = targetUniprot === proteinUniprotId;
-                                // For matches within the same protein, we still want to keep the match type
-                                // This ensures we don't incorrectly classify nodes
                                 
                                 // Add target node if not already present
                                 if (!nodeMap.has(targetId)) {
-                                    // Extract site type from target_site
-                                    const targetSiteType = match.site_type || 
-                                                         (targetSite && targetSite[0].match(/[A-Z]/) ? 
-                                                          targetSite[0] : 'S');
+                                    // Ensure we have a valid site type from target_site
+                                    let targetSiteType = match.site_type || 'S';
+                                    if (match.target_site && match.target_site[0] && 
+                                        match.target_site[0].match(/[A-Z]/)) {
+                                        targetSiteType = match.target_site[0];
+                                    }
                                     
                                     // Skip if it's a Tyrosine site
-                                    if (targetSiteType === 'Y') continue;
+                                    if (targetSiteType === 'Y') {
+                                        console.log(`Skipping Tyrosine target: ${targetId}`);
+                                        continue;
+                                    }
+                                    
+                                    // CORRECTED: Format the display name properly
+                                    let displayName = targetId;
+                                    if (targetSite && !targetId.includes(targetSite)) {
+                                        displayName = targetSite;
+                                    }
                                     
                                     const targetNode = {
                                         id: targetId,
-                                        name: match.target_site || 'Unknown',
+                                        name: displayName,
                                         uniprot: match.target_uniprot || 'Unknown',
                                         // Keep 'match' type even if it's the same protein
                                         type: 'match',
@@ -614,27 +692,51 @@ function extractSequenceNetworkData(proteinUniprotId) {
                                     
                                     nodes.push(targetNode);
                                     nodeMap.set(targetId, targetNode);
+                                    console.log(`Added match node: ${targetId}`);
+                                } else {
+                                    // If node already exists, make sure it has the similarity value
+                                    const existingNode = nodeMap.get(targetId);
+                                    if (!existingNode.similarity && similarity) {
+                                        existingNode.similarity = similarity;
+                                    }
                                 }
                                 
-                                // Add link between protein site and match
-                                links.push({
-                                    source: nodeId,
-                                    target: targetId,
-                                    similarity: similarity
-                                });
+                                // CORRECTED: Add link between protein site and match
+                                // Make sure the source and target exist and create a unique link ID
+                                const linkId = `${nodeId}-${targetId}`;
+                                
+                                // Check if this link already exists
+                                const linkExists = links.some(link => 
+                                    (link.source === nodeId && link.target === targetId) || 
+                                    (link.source === targetId && link.target === nodeId)
+                                );
+                                
+                                if (!linkExists) {
+                                    links.push({
+                                        id: linkId,
+                                        source: nodeId,
+                                        target: targetId,
+                                        similarity: similarity
+                                    });
+                                    console.log(`Added link: ${nodeId} -> ${targetId} (${similarity})`);
+                                }
                             }
                         }
                     }
                 }
             } catch (e) {
                 console.error("Error processing sequence match data:", e);
+                console.error(e.stack); // Print stack trace for debugging
             }
         }
         
-        // Now add only the protein nodes that have connections
+        // CORRECTED: Now add only the protein nodes that have connections
         for (const node of tempNodes) {
             if (node.hasConnections) {
                 nodes.push(node);
+                console.log(`Adding protein node with connections: ${node.id}`);
+            } else {
+                console.log(`Skipping protein node without connections: ${node.id}`);
             }
         }
         
@@ -647,8 +749,8 @@ function extractSequenceNetworkData(proteinUniprotId) {
         );
         
         const filteredLinks = links.filter(link => {
-            const sourceNode = nodeMap.get(link.source);
-            const targetNode = nodeMap.get(link.target);
+            const sourceNode = nodeMap.get(typeof link.source === 'object' ? link.source.id : link.source);
+            const targetNode = nodeMap.get(typeof link.target === 'object' ? link.target.id : link.target);
             if (!sourceNode || !targetNode) return false;
             
             return sourceNode.siteType !== 'Y' && 
@@ -665,6 +767,7 @@ function extractSequenceNetworkData(proteinUniprotId) {
         
     } catch (error) {
         console.error("Error extracting sequence network data:", error);
+        console.error(error.stack); // Print stack trace for debugging
         return { nodes: [], links: [] };
     }
 }
@@ -680,7 +783,6 @@ function cleanJson(jsonString) {
 }
 
 // Enhanced function to extract kinase information from site data
-// Looks for kinase data in multiple possible locations
 function extractKinaseInfo(data) {
     // Create an array to collect all kinases
     const kinases = [];
@@ -713,6 +815,11 @@ function extractKinaseInfo(data) {
                 kinases.push(kinase);
             }
         }
+    }
+    
+    // Check for known_kinases (plural) field
+    if (data.known_kinases && typeof data.known_kinases === 'string' && data.known_kinases !== 'unlabeled') {
+        kinases.push(data.known_kinases);
     }
     
     // Check if top_kinases is available with scores
@@ -882,6 +989,31 @@ function updateSequenceNetworkFilter() {
     console.log(`Nodes: ${initialVisibleNodes} → ${filteredVisibleNodes} after filtering`);
 }
 
+// Update the HTML legend
+function updateNetworkLegendHTML() {
+    const legendContainer = document.querySelector('.d-flex.align-items-center.flex-wrap');
+    if (legendContainer) {
+        legendContainer.innerHTML = `
+            <div class="d-flex align-items-center me-4 mb-2">
+                <div style="width: 16px; height: 16px; background-color: #4CAF50; border-radius: 50%; margin-right: 6px;"></div>
+                <span class="small">Known protein sites</span>
+            </div>
+            <div class="d-flex align-items-center me-4 mb-2">
+                <div style="width: 16px; height: 16px; background-color: #FF9800; border-radius: 50%; margin-right: 6px;"></div>
+                <span class="small">Unknown protein sites</span>
+            </div>
+            <div class="d-flex align-items-center me-4 mb-2">
+                <div style="width: 16px; height: 16px; background-color: #9C27B0; border-radius: 50%; margin-right: 6px;"></div>
+                <span class="small">Sites with known kinase</span>
+            </div>
+            <div class="d-flex align-items-center mb-2">
+                <div style="width: 16px; height: 16px; background-color: #E91E63; border-radius: 50%; margin-right: 6px;"></div>
+                <span class="small">Sequence-similar sites</span>
+            </div>
+        `;
+    }
+}
+
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     console.log("DOM loaded, checking for sequence network containers");
@@ -931,30 +1063,3 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 });
-
-// 2. Update the updateNetworkLegendHTML function to ensure all legend items are present
-function updateNetworkLegendHTML() {
-    const legendContainer = document.querySelector('.d-flex.align-items-center.flex-wrap');
-    if (legendContainer) {
-        legendContainer.innerHTML = `
-            <div class="d-flex align-items-center me-4 mb-2">
-                <div style="width: 16px; height: 16px; background-color: #4CAF50; border-radius: 50%; margin-right: 6px;"></div>
-                <span class="small">Known protein sites</span>
-            </div>
-            <div class="d-flex align-items-center me-4 mb-2">
-                <div style="width: 16px; height: 16px; background-color: #FF9800; border-radius: 50%; margin-right: 6px;"></div>
-                <span class="small">Unknown protein sites</span>
-            </div>
-            <div class="d-flex align-items-center me-4 mb-2">
-                <div style="width: 16px; height: 16px; background-color: #9C27B0; border-radius: 50%; margin-right: 6px;"></div>
-                <span class="small">Sites with known kinase</span>
-            </div>
-            <div class="d-flex align-items-center mb-2">
-                <div style="width: 16px; height: 16px; background-color: #E91E63; border-radius: 50%; margin-right: 6px;"></div>
-                <span class="small">Sequence-similar sites</span>
-            </div>
-        `;
-    }
-}
-
-

@@ -108,7 +108,7 @@ function setupPhosphositeStructuralNetwork(proteinUniprotId) {
         }
         
         // For match nodes without a known kinase
-        return '#9E9E9E'; // Gray for structurally similar sites without known kinases
+        return '#E91E63'; // Gray for structurally similar sites without known kinases
     }
     
     function getLinkColor(d) {
@@ -124,17 +124,20 @@ function setupPhosphositeStructuralNetwork(proteinUniprotId) {
         return Math.max(0.5, 5 / Math.max(1, d.rmsd));
     }
     
+
+
+
     // Setup force simulation with reduced physics
-    networkSimulation = d3.forceSimulation(networkData.nodes)
+    window.networkSimulation = d3.forceSimulation(networkData.nodes)
         .force('link', d3.forceLink(networkData.links)
             .id(d => d.id)
-            .distance(d => d.rmsd ? d.rmsd * 50 : 100))
+            .distance(d => d.rmsd ? d.rmsd * 40 : 150))
         .force('charge', d3.forceManyBody()
-            .strength(d => d.type === 'protein' ? -50 : -25))
+            .strength(d => d.type === 'protein' ? -300 : -50))
         .force('center', d3.forceCenter(width / 2, height / 2))
-        .force('collision', d3.forceCollide().radius(d => d.size + 2))
-        .force('x', d3.forceX(width / 2).strength(0.2))
-        .force('y', d3.forceY(height / 2).strength(0.2))
+        .force('collision', d3.forceCollide().radius(d => d.size + 5))
+        .force('x', d3.forceX(width / 2).strength(0.01))
+        .force('y', d3.forceY(height / 2).strength(0.01))
         .alphaDecay(0.05)
         .velocityDecay(0.6);
     
@@ -184,34 +187,112 @@ function setupPhosphositeStructuralNetwork(proteinUniprotId) {
     
     // Function to update info panel
     function updateInfoPanel(d) {
+        if (!d) return;
+        
+        console.log("Showing info for node:", d); // Debug log
+        
         let content = '';
         if (d.type === 'protein') {
+            // For source protein sites
             content = `
-                <h6 class="border-bottom pb-2 mb-2">${d.name} - ${d.uniprot}</h6>
-                <p><strong>Site Type:</strong> ${d.siteType}</p>
-                <p><strong>Known Site:</strong> ${d.isKnown ? 'Yes' : 'No'}</p>
-                ${d.known_kinase ? `<p><strong>Known Kinase${d.known_kinase.includes(',') ? 's' : ''}:</strong> ${formatKinaseList(d.known_kinase)}</p>` : ''}
-                ${d.meanPLDDT || d.mean_plddt ? `<p><strong>Mean pLDDT:</strong> ${d.meanPLDDT || d.mean_plddt}</p>` : ''}
-                ${d.nearbyCount || d.nearby_count ? `<p><strong>Nearby Residues:</strong> ${d.nearbyCount || d.nearby_count}</p>` : ''}
-                ${d.surface_accessibility ? `<p><strong>Surface Access:</strong> ${typeof d.surface_accessibility === 'number' ? d.surface_accessibility.toFixed(1) : d.surface_accessibility}%</p>` : ''}
-                ${d.motif ? `<p><strong>Motif:</strong> <code>${d.motif}</code></p>` : ''}
+                <h6 class="border-bottom pb-2 mb-2">${d.name || ''} - ${d.uniprot || proteinUniprotId}</h6>
+                <p><strong>Site Type:</strong> ${d.siteType || d.name[0] || 'S'}</p>
+                <p><strong>Known Site:</strong> ${d.isKnown || d.is_known_phosphosite === 1 ? 'Yes' : 'No'}</p>`;
+                    
+            // Only add kinase info if available
+            if (d.known_kinase) {
+                content += `<p><strong>Known Kinase${d.known_kinase.includes(',') ? 's' : ''}:</strong> ${formatKinaseList(d.known_kinase)}</p>`;
+            }
+            
+            // Only add fields that exist
+            if (d.meanPLDDT || d.mean_plddt) {
+                content += `<p><strong>Mean pLDDT:</strong> ${d.meanPLDDT || d.mean_plddt}</p>`;
+            }
+            
+            if (d.nearbyCount || d.nearby_count) {
+                content += `<p><strong>Nearby Residues:</strong> ${d.nearbyCount || d.nearby_count}</p>`;
+            }
+            
+            if (d.surface_accessibility || d.surfaceAccessibility) {
+                const accessValue = d.surface_accessibility || d.surfaceAccessibility;
+                content += `<p><strong>Surface Access:</strong> ${typeof accessValue === 'number' ? accessValue.toFixed(1) : accessValue}%</p>`;
+            }
+            
+            if (d.motif) {
+                content += `<p><strong>Motif:</strong> <code>${d.motif}</code></p>`;
+            }
+            
+            content += `
                 <div class="d-grid gap-2 mt-3">
-                    <a href="/site/${d.uniprot}/${d.name}" class="btn btn-sm btn-primary">View Site Details</a>
+                    <a href="/site/${d.uniprot || proteinUniprotId}/${d.name}" class="btn btn-sm btn-primary">View Site Details</a>
                 </div>
             `;
         } else {
+            // For match nodes - major improvements to data extraction
+            
+            // Access the raw match data if available for maximum data availability
+            const matchData = d.matchData || d;
+            
+            // Extract display values with robust fallbacks
+            const displayName = d.name || '';
+            const displayUniprot = d.uniprot || '';
+            const displaySiteType = d.siteType || (displayName && displayName[0]) || 'S';
+            
             content = `
-                <h6 class="border-bottom pb-2 mb-2">${d.name} - ${d.uniprot}</h6>
-                <p><strong>Site Type:</strong> ${d.siteType}</p>
-                <p><strong>RMSD:</strong> ${d.rmsd ? d.rmsd.toFixed(2) + ' Å' : 'N/A'}</p>
-                ${d.known_kinase ? `<p><strong>Known Kinase${d.known_kinase.includes(',') ? 's' : ''}:</strong> ${formatKinaseList(d.known_kinase)}</p>` : ''}
-                ${d.mean_plddt || d.site_plddt ? `<p><strong>Mean pLDDT:</strong> ${d.mean_plddt || d.site_plddt}</p>` : ''}
-                ${d.nearby_count ? `<p><strong>Nearby Residues:</strong> ${d.nearby_count}</p>` : ''}
-                ${d.surface_accessibility ? `<p><strong>Surface Access:</strong> ${typeof d.surface_accessibility === 'number' ? d.surface_accessibility.toFixed(1) : d.surface_accessibility}%</p>` : ''}
-                ${d.motif ? `<p><strong>Motif:</strong> <code>${d.motif}</code></p>` : ''}
+                <h6 class="border-bottom pb-2 mb-2">${displayName} - ${displayUniprot}</h6>
+                <p><strong>Site Type:</strong> ${displaySiteType}</p>`;
+                    
+            // Add RMSD with safety check - critical for match nodes
+            if (d.rmsd !== undefined && d.rmsd !== null && !isNaN(d.rmsd)) {
+                content += `<p><strong>RMSD:</strong> ${parseFloat(d.rmsd).toFixed(2)} Å</p>`;
+            }
+            
+            // Check for kinase info in all possible locations
+            const kinaseInfo = d.known_kinase || 
+                              matchData.known_kinase || 
+                              matchData.target_known_kinase ||
+                              null;
+                              
+            if (kinaseInfo) {
+                content += `<p><strong>Known Kinase${kinaseInfo.includes(',') ? 's' : ''}:</strong> ${formatKinaseList(kinaseInfo)}</p>`;
+            }
+            
+            // Comprehensive check for pLDDT values across all possible field names
+            const plddt = d.mean_plddt || d.site_plddt || d.meanPLDDT || 
+                         matchData.mean_plddt || matchData.site_plddt || matchData.pLDDT ||
+                         null;
+            if (plddt !== null && plddt !== undefined && plddt !== '') {
+                content += `<p><strong>Mean pLDDT:</strong> ${plddt}</p>`;
+            }
+            
+            // Check all possible fields for nearby residue count
+            const nearbyCount = d.nearby_count || d.nearbyCount || d.NeighborCount || 
+                              matchData.nearby_count || matchData.nearbyCount || matchData.NeighborCount ||
+                              null;
+            if (nearbyCount !== null && nearbyCount !== undefined && nearbyCount !== '') {
+                content += `<p><strong>Nearby Residues:</strong> ${nearbyCount}</p>`;
+            }
+            
+            // Comprehensive check for surface accessibility values
+            const accessValue = d.surface_accessibility || d.surfaceAccessibility || 
+                              matchData.surface_accessibility || matchData.surfaceAccessibility ||
+                              (matchData.HydroxylExposure ? matchData.HydroxylExposure * 100 : null);
+            
+            if (accessValue !== null && accessValue !== undefined && accessValue !== '') {
+                // Format percentage properly
+                content += `<p><strong>Surface Access:</strong> ${typeof accessValue === 'number' ? accessValue.toFixed(1) : accessValue}%</p>`;
+            }
+            
+            // Check for motif in both the node and raw match data
+            const motif = d.motif || matchData.motif || null;
+            if (motif) {
+                content += `<p><strong>Motif:</strong> <code>${motif}</code></p>`;
+            }
+            
+            content += `
                 <div class="d-grid gap-2 mt-3">
-                    <a href="https://www.uniprot.org/uniprotkb/${d.uniprot}" class="btn btn-sm btn-outline-primary" target="_blank">View on UniProt</a>
-                    <a href="/site/${d.uniprot}/${d.name}" class="btn btn-sm btn-primary">View Site Details</a>
+                    <a href="https://www.uniprot.org/uniprotkb/${displayUniprot}" class="btn btn-sm btn-outline-primary" target="_blank">View on UniProt</a>
+                    <a href="/site/${displayUniprot}/${displayName}" class="btn btn-sm btn-primary">View Site Details</a>
                 </div>
             `;
         }
@@ -223,7 +304,7 @@ function setupPhosphositeStructuralNetwork(proteinUniprotId) {
     function formatKinaseList(kinaseString) {
         if (!kinaseString) return '';
         
-        const kinases = kinaseString.split(',').map(k => k.trim());
+        const kinases = kinaseString.split(',').map(k => k.trim()).filter(k => k);
         return kinases.map(kinase => 
             `<span class="badge bg-primary me-1">${kinase}</span>`
         ).join(' ');
@@ -233,6 +314,9 @@ function setupPhosphositeStructuralNetwork(proteinUniprotId) {
     node
         .on('mouseover', function(event, d) {
             // Highlight node on hover
+            // Log data for debugging
+            console.log("Hovering node:", d);
+
             d3.select(this)
                 .transition()
                 .duration(200)
@@ -250,11 +334,11 @@ function setupPhosphositeStructuralNetwork(proteinUniprotId) {
         })
         .on('click', function(event, d) {
             // Navigate to site details
-            window.location.href = `/site/${d.uniprot}/${d.name}`;
+            window.location.href = `/site/${d.uniprot || proteinUniprotId}/${d.name}`;
         });
     
     // Tick function for the simulation
-    networkSimulation.on('tick', () => {
+    window.networkSimulation.on('tick', () => {
         link
             .attr('x1', d => d.source.x)
             .attr('y1', d => d.source.y)
@@ -275,9 +359,12 @@ function setupPhosphositeStructuralNetwork(proteinUniprotId) {
     window.networkLinks = link;
     window.networkLabels = label;
     
+    // Set up legend
+    addNetworkLegend(svg, width);
+    
     // Drag functions
     function dragstarted(event, d) {
-        if (!event.active) networkSimulation.alphaTarget(0.3).restart();
+        if (!event.active) window.networkSimulation.alphaTarget(0.3).restart();
         d.fx = d.x;
         d.fy = d.y;
     }
@@ -288,10 +375,56 @@ function setupPhosphositeStructuralNetwork(proteinUniprotId) {
     }
     
     function dragended(event, d) {
-        if (!event.active) networkSimulation.alphaTarget(0);
+        if (!event.active) window.networkSimulation.alphaTarget(0);
         d.fx = null;
         d.fy = null;
     }
+}
+
+// Add a legend to the network visualization
+function addNetworkLegend(svg, width) {
+    const legend = svg.append("g")
+        .attr("class", "legend")
+        .attr("transform", `translate(20, 20)`);
+    
+    const legendData = [
+        { color: "#4CAF50", label: "Known protein sites" },
+        { color: "#FF9800", label: "Unknown protein sites" },
+        { color: "#9C27B0", label: "Sites with known kinase" },
+        { color: "#E91E63", label: "Structurally similar sites" }
+    ];
+    
+    // Add background for better visibility
+    legend.append("rect")
+        .attr("x", -5)
+        .attr("y", -5)
+        .attr("width", 190)
+        .attr("height", legendData.length * 20 + 10)
+        .attr("fill", "white")
+        .attr("opacity", 0.8)
+        .attr("rx", 5)
+        .attr("ry", 5);
+    
+    const legendItems = legend.selectAll(".legend-item")
+        .data(legendData)
+        .enter()
+        .append("g")
+        .attr("class", "legend-item")
+        .attr("transform", (d, i) => `translate(0, ${i * 20})`);
+    
+    // Add colored circles
+    legendItems.append("circle")
+        .attr("r", 6)
+        .attr("cx", 6)
+        .attr("cy", 4)
+        .attr("fill", d => d.color);
+    
+    // Add labels
+    legendItems.append("text")
+        .attr("x", 15)
+        .attr("y", 8)
+        .text(d => d.label)
+        .attr("font-size", "12px");
 }
 
 function extractStructuralNetworkData(proteinUniprotId) {
@@ -413,7 +546,7 @@ function extractStructuralNetworkData(proteinUniprotId) {
                 continue;
             }
             
-            // Create node ID - IMPORTANT: Using resno without letter for consistency
+            // Create node ID - for source protein sites
             const resno = site.resno || parseInt(site.site.substring(1));
             if (isNaN(resno)) {
                 console.warn(`Invalid residue number for site: ${site.site}`);
@@ -445,7 +578,8 @@ function extractStructuralNetworkData(proteinUniprotId) {
                 nearby_count: site.nearbyCount || site.nearby_count || '',
                 surface_accessibility: site.surface_accessibility || '',
                 surfaceAccessibility: site.surface_accessibility || '',
-                size: 10
+                size: 10,
+                hasConnections: false  // Track whether this node has connections
             };
             
             // Add node to collections
@@ -473,50 +607,78 @@ function extractStructuralNetworkData(proteinUniprotId) {
                         for (const [siteName, matches] of Object.entries(matchesData)) {
                             // Skip if site name starts with 'Y' (Tyrosine)
                             if (siteName[0] === 'Y') continue;
-        
+                            
                             // Skip sites without matches
                             if (!Array.isArray(matches) || matches.length === 0) continue;
                             
-                            // Extract site number without letter consistently
-                            const siteResno = parseInt(siteName.replace(/[A-Z]/g, ''));
-                            if (isNaN(siteResno)) {
-                                console.warn(`Invalid residue number for site: ${siteName}`);
-                                continue;
+                            // Extract site number for consistent node IDs
+                            let sourceNodeId;
+                            if (siteName.includes('_')) {
+                                // Format: UniProtID_ResidueNumber
+                                sourceNodeId = siteName;
+                            } else {
+                                // Format might be just the site name (e.g., "S102")
+                                const siteMatch = siteName.match(/^([STY])(\d+)$/);
+                                if (siteMatch) {
+                                    const siteType = siteMatch[1];
+                                    const siteNumber = parseInt(siteMatch[2]);
+                                    sourceNodeId = `${proteinUniprotId}_${siteNumber}`;
+                                } else {
+                                    // Try simple extraction of digits if pattern doesn't match
+                                    const siteResno = parseInt(siteName.replace(/[A-Z]/g, ''));
+                                    if (isNaN(siteResno)) {
+                                        console.warn(`Invalid residue number for site: ${siteName}`);
+                                        continue;
+                                    }
+                                    sourceNodeId = `${proteinUniprotId}_${siteResno}`;
+                                }
                             }
                             
-                            // Create source node ID with just the number
-                            const sourceNodeId = `${siteName}`;
-
-                            console.log(`Processing ${matches.length} matches for site ${siteName}`);
+                            console.log(`Processing ${matches.length} matches for site ${siteName} (${sourceNodeId})`);
                             
                             // Ensure source node exists
                             if (!nodeMap.has(sourceNodeId)) {
                                 // If the source node doesn't exist, create it
                                 console.log(`Source node ${sourceNodeId} not found, creating it`);
                                 
-                                // Create minimal source node
+                                // Determine site type
+                                let siteType;
+                                if (siteName && siteName.match(/^[STY]/)) {
+                                    siteType = siteName[0];
+                                } else {
+                                    siteType = 'S'; // Default to Serine if unknown
+                                }
+                                
+                                // Create new source node
                                 const sourceNode = {
                                     id: sourceNodeId,
                                     name: siteName,
                                     uniprot: proteinUniprotId,
                                     type: 'protein',
                                     isKnown: false,
-                                    siteType: siteName[0],
-                                    size: 10
+                                    siteType: siteType,
+                                    size: 10,
+                                    hasConnections: false
                                 };
                                 
                                 nodes.push(sourceNode);
                                 nodeMap.set(sourceNodeId, sourceNode);
                             }
                             
+                            // Mark this source node as having connections
+                            const sourceNode = nodeMap.get(sourceNodeId);
+                            sourceNode.hasConnections = true;
+                            
                             // Process each match
                             for (const match of matches) {
                                 // Skip matches with Y sites
-                                if (match.target_site && match.target_site[0] === 'Y') continue;
+                                if ((match.target_site && match.target_site[0] === 'Y') || 
+                                    match.site_type === 'Y' || 
+                                    match.ResidueType === 'Y') continue;
                                 
                                 // Get target info
                                 const targetUniprot = match.target_uniprot;
-                                const targetSite = match.target_site;
+                                let targetSite = match.target_site;
                                 const rmsd = parseFloat(match.rmsd);
                                 
                                 // Skip if missing essential info or invalid RMSD
@@ -525,49 +687,78 @@ function extractStructuralNetworkData(proteinUniprotId) {
                                     continue;
                                 }
                                 
-                                // Extract target residue number without letter
-                                const targetResno = parseInt(targetSite.replace(/[A-Z]/g, ''));
-                                if (isNaN(targetResno)) {
-                                    console.warn(`Invalid target residue number: ${targetSite}`);
-                                    continue;
+                                // Determine target site type (multiple possible sources)
+                                let targetSiteType = match.site_type || match.ResidueType || 
+                                                  (targetSite && targetSite[0].match(/[STY]/) ? targetSite[0] : 'S');
+                                
+                                // Skip Tyrosine sites
+                                if (targetSiteType === 'Y') continue;
+                                
+                                // If target site doesn't have the site type prefix, add it
+                                if (targetSite && !targetSite.match(/^[STY]/)) {
+                                    targetSite = `${targetSiteType}${targetSite}`;
                                 }
                                 
-                                // Create target node ID with just the number
+                                // Extract target residue number 
+                                let targetResno;
+                                if (targetSite.match(/\d+/)) {
+                                    targetResno = parseInt(targetSite.match(/\d+/)[0]);
+                                } else if (match.ResidueNumber) {
+                                    targetResno = parseInt(match.ResidueNumber);
+                                } else {
+                                    // Try to extract from target_id if available
+                                    const targetIdParts = match.target_id ? match.target_id.split('_') : [];
+                                    if (targetIdParts.length >= 2) {
+                                        targetResno = parseInt(targetIdParts[1]);
+                                    }
+                                    
+                                    if (isNaN(targetResno)) {
+                                        console.warn(`Cannot determine target residue number: ${targetSite}`);
+                                        continue;
+                                    }
+                                }
+                                
+                                // Create target node ID
                                 const targetNodeId = `${targetUniprot}_${targetResno}`;
                                 
                                 // Skip self-references
                                 if (sourceNodeId === targetNodeId) continue;
                                 
-                                // Extract kinase information using Python's naming convention
-                                const knownKinase = match.known_kinase;
+                                // Extract kinase information 
+                                const knownKinase = extractKinaseInfo(match);
                                 
                                 // Add target node if not already present
                                 if (!nodeMap.has(targetNodeId)) {
+                                    // Use the raw match data to ensure all fields are available
                                     const targetNode = {
                                         id: targetNodeId,
                                         name: targetSite,
                                         uniprot: targetUniprot,
                                         type: 'match',
                                         isKnown: match.is_known_phosphosite === 1 || match.is_known === true,
-                                        siteType: targetSite[0],
+                                        is_known_phosphosite: match.is_known_phosphosite || 0,
+                                        siteType: targetSiteType,
                                         rmsd: rmsd,
+                                        // Comprehensive extraction of all possible fields
                                         known_kinase: knownKinase,
                                         motif: match.motif || '',
                                         mean_plddt: match.mean_plddt || match.site_plddt || '',
                                         meanPLDDT: match.mean_plddt || match.site_plddt || '',
-                                        nearby_count: match.nearby_count || '',
-                                        nearbyCount: match.nearby_count || '',
-                                        surface_accessibility: match.surface_accessibility || '',
-                                        surfaceAccessibility: match.surface_accessibility || '',
-                                        size: 8  // Slightly smaller for match sites
+                                        nearby_count: match.nearby_count || match.NeighborCount || '',
+                                        nearbyCount: match.nearby_count || match.NeighborCount || '',
+                                        surface_accessibility: match.surface_accessibility || 
+                                                             (match.HydroxylExposure ? match.HydroxylExposure * 100 : ''),
+                                        // Store the full original match data for complete access
+                                        matchData: match,
+                                        size: 8,  // Slightly smaller for match sites
+                                        hasConnections: true
                                     };
                                     
                                     nodes.push(targetNode);
                                     nodeMap.set(targetNodeId, targetNode);
                                 }
                                 
-                                // Create link with explicit source and target as strings
-                                // This is critical for D3 to properly connect nodes
+                                // Create link with explicit source and target
                                 links.push({
                                     source: sourceNodeId,
                                     target: targetNodeId,
@@ -625,12 +816,17 @@ function extractStructuralNetworkData(proteinUniprotId) {
                         type: 'protein',
                         isKnown: false,
                         siteType: siteName[0],
-                        size: 10
+                        size: 10,
+                        hasConnections: false
                     };
                     
                     nodes.push(sourceNode);
                     nodeMap.set(sourceNodeId, sourceNode);
                 }
+                
+                // Mark this source node as having connections
+                const sourceNode = nodeMap.get(sourceNodeId);
+                sourceNode.hasConnections = true;
                 
                 // Get match table
                 const matchTable = matchCard.querySelector('table');
@@ -672,8 +868,13 @@ function extractStructuralNetworkData(proteinUniprotId) {
                     if (rmsdFilter) {
                         rmsdFilter.min = "0.1";
                         rmsdFilter.max = "10.0";
-                        rmsdFilter.value = "4.0"; // Default value
-                        document.getElementById('rmsd-value').textContent = "4.0 Å";
+                        if (!rmsdFilter.value) {
+                            rmsdFilter.value = "4.0"; // Default value
+                            const rmsdValueElement = document.getElementById('rmsd-value');
+                            if (rmsdValueElement) {
+                                rmsdValueElement.textContent = "4.0 Å";
+                            }
+                        }
                     }
                     const currentThreshold = rmsdFilter ? parseFloat(rmsdFilter.value) : 10.0;
                     if (rmsd > currentThreshold) return;
@@ -715,7 +916,8 @@ function extractStructuralNetworkData(proteinUniprotId) {
                             siteType: targetSite[0],
                             rmsd: rmsd,
                             known_kinase: knownKinase,
-                            size: 8
+                            size: 8,
+                            hasConnections: true
                         };
                         
                         nodes.push(targetNode);
@@ -734,46 +936,36 @@ function extractStructuralNetworkData(proteinUniprotId) {
             });
         }
         
+        // Only include nodes that have connections
+        const connectedNodes = nodes.filter(node => node.hasConnections || node.type === 'match');
+        
         // Log final counts and verify data
-        console.log(`Final structural network: ${nodes.length} nodes, ${links.length} links`);
+        console.log(`Final structural network: ${connectedNodes.length} nodes, ${links.length} links`);
         
         // Verify that all link sources and targets exist as nodes
+        const nodeIds = new Set(connectedNodes.map(node => node.id));
         const invalidLinks = links.filter(link => {
-            return !nodeMap.has(link.source) || !nodeMap.has(link.target);
+            const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+            const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+            return !nodeIds.has(sourceId) || !nodeIds.has(targetId);
         });
         
         if (invalidLinks.length > 0) {
             console.warn(`Found ${invalidLinks.length} invalid links with missing nodes`);
             // Filter out invalid links
-            const validLinks = links.filter(link => nodeMap.has(link.source) && nodeMap.has(link.target));
-            console.log(`Filtered to ${validLinks.length} valid links`);
-            links = validLinks;
-        }
-        
-        if (nodes.length > 0 && links.length > 0) {
-            // Create a set of all connected node IDs
-            const connectedNodeIds = new Set();
-            
-            // Add all nodes that appear in links
-            links.forEach(link => {
+            const validLinks = links.filter(link => {
                 const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
                 const targetId = typeof link.target === 'object' ? link.target.id : link.target;
-                connectedNodeIds.add(sourceId);
-                connectedNodeIds.add(targetId);
+                return nodeIds.has(sourceId) && nodeIds.has(targetId);
             });
+            console.log(`Filtered to ${validLinks.length} valid links`);
             
-            // Filter nodes to only include those with connections
-            // Exception: if there are no links at all, show all protein nodes
-            const filteredNodes = links.length > 0 
-                ? nodes.filter(node => connectedNodeIds.has(node.id)) 
-                : nodes.filter(node => node.type === 'protein');
-            
-            console.log(`Filtered from ${nodes.length} nodes to ${filteredNodes.length} connected nodes`);
-            
-            return { nodes: filteredNodes, links };
+            return { nodes: connectedNodes, links: validLinks };
         }
-
-
+        
+        if (connectedNodes.length > 0 && links.length > 0) {
+            return { nodes: connectedNodes, links };
+        }
         
         return null;
     } catch (error) {
@@ -783,49 +975,75 @@ function extractStructuralNetworkData(proteinUniprotId) {
     }
 }
 
-
 // Function to filter network by RMSD threshold
 // Function to filter network by RMSD threshold
 function updateNetworkFilter() {
-    if (!window.networkNodes || !window.networkLinks) return;
+    if (!window.networkNodes || !window.networkLinks) {
+        console.error("Network elements not available for filtering");
+        return;
+    }
     
-    const threshold = parseFloat(document.getElementById('rmsd-filter').value);
-    console.log(`Filtering network with RMSD threshold: ${threshold}`);
+    const filterElement = document.getElementById('rmsd-filter');
+    
+    // If filter element doesn't exist, use default threshold
+    const threshold = filterElement ? parseFloat(filterElement.value) : 4.0;
+    console.log(`RMSD threshold set to: ${threshold} Å`);
+    
+    // First show all nodes and links to reset any previous filtering
+    window.networkNodes.style('display', null);
+    window.networkLinks.style('display', null);
     
     // Filter links by RMSD
     window.networkLinks.style('display', function(d) {
         return d.rmsd <= threshold ? null : 'none';
     });
     
-    // Show nodes only if they have visible connections
-    window.networkNodes.style('display', function(d) {
-        // Always show protein sites
-        if (d.type === 'protein') return null;
-        
-        // For other nodes, check if they have any visible connections
-        const hasVisibleConnection = window.networkLinks.data().some(link => {
-            const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
-            const targetId = typeof link.target === 'object' ? link.target.id : link.target;
-            
-            return ((sourceId === d.id || targetId === d.id) && link.rmsd <= threshold);
-        });
-        
-        return hasVisibleConnection ? null : 'none';
+    // Create a set to track nodes that should be visible
+    const visibleNodeIds = new Set();
+    
+    // Add all protein nodes as they should always be visible
+    window.networkNodes.each(function(d) {
+        if (d.type === 'protein') {
+            visibleNodeIds.add(d.id);
+        }
     });
     
-    // Update labels visibility to match nodes
+    // Add match nodes that have connections below the threshold
+    window.networkLinks.each(function(d) {
+        if (d.rmsd <= threshold) {
+            // Handle both object and string source/target
+            const sourceId = typeof d.source === 'object' ? d.source.id : d.source;
+            const targetId = typeof d.target === 'object' ? d.target.id : d.target;
+            visibleNodeIds.add(sourceId);
+            visibleNodeIds.add(targetId);
+        }
+    });
+    
+    // Update node visibility based on our visibility set
+    window.networkNodes.style('display', function(d) {
+        return visibleNodeIds.has(d.id) ? null : 'none';
+    });
+    
+    // Update label visibility
     if (window.networkLabels) {
         window.networkLabels.style('display', function(d) {
-            // Get the corresponding node
-            const node = window.networkNodes.filter(n => n.__data__.id === d.id).node();
-            if (node) {
-                // Check if the node is visible
-                return window.getComputedStyle(node).display !== 'none' ? null : 'none';
-            }
-            return null;
+            return visibleNodeIds.has(d.id) ? null : 'none';
         });
     }
+    
+    // Count nodes and links after filtering
+    const filteredVisibleLinks = window.networkLinks.filter(function() {
+        return window.getComputedStyle(this).display !== 'none';
+    }).size();
+    
+    const filteredVisibleNodes = window.networkNodes.filter(function() {
+        return window.getComputedStyle(this).display !== 'none';
+    }).size();
+    
+    console.log(`Links: ${window.networkLinks.size()} → ${filteredVisibleLinks} after filtering`);
+    console.log(`Nodes: ${window.networkNodes.size()} → ${filteredVisibleNodes} after filtering`);
 }
+
 
 // Helper function to clean JSON before parsing
 function cleanJson(jsonString) {
