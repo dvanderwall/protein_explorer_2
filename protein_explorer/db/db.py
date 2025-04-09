@@ -233,6 +233,13 @@ QUERY_TEMPLATES = {
         ORDER BY `RMSD` ASC
         /* Uses index: idx_query_rmsd (composite) */
     """,
+
+    "find_structural_matches_batch_by_target": """
+        SELECT * FROM `Structural_Similarity_Edges`
+        WHERE `Target` IN :site_ids AND `RMSD` <= :rmsd_threshold
+        ORDER BY `RMSD` ASC
+        /* Uses index: idx_query_rmsd (composite) */
+    """,
     
     "find_sequence_matches": """
         SELECT * FROM `Sequence_Similarity_Edges_Full`
@@ -901,9 +908,12 @@ def find_structural_matches_batch(site_ids: List[str], rmsd_threshold: float = 5
             missing_sites.append(site_id)
     
     # If all results were in cache, return immediately
+    print("MISSING SITES")
+    print(missing_sites) 
     if not missing_sites:
         return cached_results
-        
+    print("MISSING SITES")
+    print(missing_sites)    
     try:
         # Use the batch helper function for missing sites
         query = QUERY_TEMPLATES["find_structural_matches_batch"]
@@ -914,8 +924,40 @@ def find_structural_matches_batch(site_ids: List[str], rmsd_threshold: float = 5
             id_param_name="site_ids", 
             extra_params={"rmsd_threshold": rmsd_threshold}
         )
-        print('Here is Pre-Structural Data Structure')
+        query_2 = QUERY_TEMPLATES["find_structural_matches_batch_by_target"]
+        df_2 = execute_batch_query(
+            query_2,
+            missing_sites,  
+            batch_size=BATCH_SIZES["structural_matches"],  # Use optimized batch size
+            id_param_name="site_ids",
+            extra_params={"rmsd_threshold": rmsd_threshold}
+        )
+        # Identify the correct column names in df_2
+        query_col = "Query"
+        target_col = "Target"
+
+        # Create a copy of df_2 to avoid modifying the original
+        df_2_swapped = df_2.copy()
+
+        # Swap the Query and Target columns in df_2
+        df_2_swapped[query_col] = df_2[target_col]
+        df_2_swapped[target_col] = df_2[query_col]
+
+        # Merge df and df_2_swapped
+        merged_df = pd.concat([df, df_2_swapped], ignore_index=True)
+
+        # Remove duplicate rows based on Query and Target columns
+        merged_df = merged_df.drop_duplicates(subset=[query_col, target_col], keep="first")
+
+        # Reset index
+        df = merged_df.reset_index(drop=True)
+
+        print('df1')
         print(df)
+        print('df2')
+        print(df_2_swapped)
+        print('Here is Pre-Structural Data Structure')
+        #print(merged_df)
         if not df.empty:
             # Organize matches by query site
             for _, row in df.iterrows():
@@ -2031,5 +2073,6 @@ def print_structural_edges_sample(sample_size=100):
 
 
 # Initialize database on module import
+clear_cache()
 init_db()
-
+#clear_cache()

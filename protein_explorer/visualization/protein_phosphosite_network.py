@@ -73,7 +73,7 @@ def create_phosphosite_network_visualization(protein_uniprot_id, phosphosites=No
                         <span class="small">Sites with known kinase</span>
                     </div>
                     <div class="d-flex align-items-center mb-2">
-                        <div style="width: 16px; height: 16px; background-color: #9E9E9E; border-radius: 50%; margin-right: 6px;"></div>
+                        <div style="width: 16px; height: 16px; background-color: #E91E63; border-radius: 50%; margin-right: 6px;"></div>
                         <span class="small">Structurally similar sites</span>
                     </div>
                 </div>
@@ -95,6 +95,8 @@ def create_phosphosite_network_visualization(protein_uniprot_id, phosphosites=No
     <div id="structural-match-data" style="display: none;" data-matches='"""
     
     # Convert processed matches to JSON with proper handling
+    print("STRUCTURAL MATCHES")
+    #print(structural_matches)
     processed_matches = structural_matches 
     try:
         matches_json = json.dumps(processed_matches)
