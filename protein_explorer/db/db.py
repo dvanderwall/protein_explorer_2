@@ -194,6 +194,65 @@ TABLES = {
             "pLDDT": "idx_plddt",
             "SecondaryStructure": "idx_secondary_structure"
         }
+    }, 
+    "Cantley_Kinome_Scores_All_STs": {
+        "id_column": "SiteID",
+        "columns": [
+            "SiteID", "Motif", "AAK1", "ACVR2A", "ACVR2B", "AKT1", "AKT2", "AKT3", "ALK2", "ALK4", 
+            "ALPHAK3", "AMPKA1", "AMPKA2", "ANKRD3", "ASK1", "ATM", "ATR", "AURA", "AURB", "AURC",
+            "BCKDK", "BIKE", "BMPR1A", "BMPR1B", "BMPR2", "BRAF", "BRSK1", "BRSK2", "BUB1", "CAMK1A",
+            "CAMK1B", "CAMK1D", "CAMK1G", "CAMK2A", "CAMK2B", "CAMK2D", "CAMK2G", "CAMK4", "CAMKK1", "CAMKK2",
+            "CAMLCK", "CDC7", "CDK1", "CDK10", "CDK12", "CDK13", "CDK14", "CDK16", "CDK17", "CDK18",
+            "CDK19", "CDK2", "CDK3", "CDK4", "CDK5", "CDK6", "CDK7", "CDK8", "CDK9", "CDKL1",
+            "CDKL5", "CHAK1", "CHAK2", "CHK1", "CHK2", "CK1A", "CK1A2", "CK1D", "CK1E", "CK1G1",
+            "CK1G2", "CK1G3", "CK2A1", "CK2A2", "CLK1", "CLK2", "CLK3", "CLK4", "COT", "CRIK",
+            "DAPK1", "DAPK2", "DAPK3", "DCAMKL1", "DCAMKL2", "DLK", "DMPK1", "DNAPK", "DRAK1", "DSTYK",
+            "DYRK1A", "DYRK1B", "DYRK2", "DYRK3", "DYRK4", "EEF2K", "ERK1", "ERK2", "ERK5", "ERK7",
+            "FAM20C", "GAK", "GCK", "GCN2", "GRK1", "GRK2", "GRK3", "GRK4", "GRK5", "GRK6",
+            "GRK7", "GSK3A", "GSK3B", "HASPIN", "HGK", "HIPK1", "HIPK2", "HIPK3", "HIPK4", "HPK1",
+            "HRI", "HUNK", "ICK", "IKKA", "IKKB", "IKKE", "IRAK1", "IRAK4", "IRE1", "IRE2",
+            "JNK1", "JNK2", "JNK3", "KHS1", "KHS2", "KIS", "LATS1", "LATS2", "LKB1", "LOK",
+            "LRRK2", "MAK", "MAP3K15", "MAPKAPK2", "MAPKAPK3", "MAPKAPK5", "MARK1", "MARK2", "MARK3", "MARK4",
+            "MASTL", "MEK1", "MEK2", "MEK5", "MEKK1", "MEKK2", "MEKK3", "MEKK6", "MELK", "MINK",
+            "MLK1", "MLK2", "MLK3", "MLK4", "MNK1", "MNK2", "MOK", "MOS", "MPSK1", "MRCKA",
+            "MRCKB", "MSK1", "MSK2", "MST1", "MST2", "MST3", "MST4", "MTOR", "MYLK4", "MYO3A",
+            "MYO3B", "NDR1", "NDR2", "NEK1", "NEK11", "NEK2", "NEK3", "NEK4", "NEK5", "NEK6",
+            "NEK7", "NEK8", "NEK9", "NIK", "NIM1", "NLK", "NUAK1", "NUAK2", "OSR1", "P38A",
+            "P38B", "P38D", "P38G", "P70S6K", "P70S6KB", "P90RSK", "PAK1", "PAK2", "PAK3", "PAK4",
+            "PAK5", "PAK6", "PASK", "PBK", "PDHK1", "PDHK4", "PDK1", "PERK", "PHKG1", "PHKG2",
+            "PIM1", "PIM2", "PIM3", "PINK1", "PKACA", "PKACB", "PKACG", "PKCA", "PKCB", "PKCD",
+            "PKCE", "PKCG", "PKCH", "PKCI", "PKCT", "PKCZ", "PKG1", "PKG2", "PKN1", "PKN2",
+            "PKN3", "PKR", "PLK1", "PLK2", "PLK3", "PLK4", "PRKD1", "PRKD2", "PRKD3", "PRKX",
+            "PRP4", "PRPK", "QIK", "QSK", "RAF1", "RIPK1", "RIPK2", "RIPK3", "ROCK1", "ROCK2",
+            "RSK2", "RSK3", "RSK4", "SBK", "SGK1", "SGK3", "SIK", "SKMLCK", "SLK", "SMG1",
+            "SMMLCK", "SNRK", "SRPK1", "SRPK2", "SRPK3", "SSTK", "STK33", "STLK3", "TAK1", "TAO1",
+            "TAO2", "TAO3", "TBK1", "TGFBR1", "TGFBR2", "TLK1", "TLK2", "TNIK", "TSSK1", "TSSK2",
+            "TTBK1", "TTBK2", "TTK", "ULK1", "ULK2", "VRK1", "VRK2", "WNK1", "WNK3", "WNK4",
+            "YANK2", "YANK3", "YSK1", "YSK4", "ZAK"
+        ],
+        "indexes": {
+            "SiteID": "PRIMARY"
+        }
+    },
+
+    "Cantley_Kinome_Scores_All_Ys": {
+        "id_column": "SiteID",
+        "columns": [
+            "SiteID", "Motif", "ABL", "ACK", "ALK", "ARG", "AXL", "BLK", "BMPR2_TYR", "BRK", 
+            "BTK", "CSFR", "CSK", "CTK", "DDR1", "DDR2", "EGFR", "EPHA1", "EPHA2", "EPHA3", 
+            "EPHA4", "EPHA5", "EPHA6", "EPHA7", "EPHA8", "EPHB1", "EPHB2", "EPHB3", "EPHB4", 
+            "ETK", "FAK", "FER", "FES", "FGFR1", "FGFR2", "FGFR3", "FGFR4", "FGR", "FLT3", 
+            "FRK", "FYN", "HCK", "HER2", "HER4", "IGF1R", "INSR", "IRR", "ITK", "JAK1", 
+            "JAK2", "JAK3", "KIT", "LCK", "LIMK1_TYR", "LIMK2_TYR", "LTK", "LYN", "MER", 
+            "MET", "MKK4_TYR", "MKK6_TYR", "MKK7_TYR", "MST1R", "MUSK", "MYT1_TYR", "NEK10_TYR", 
+            "PDGFRA", "PDGFRB", "PDHK1_TYR", "PDHK3_TYR", "PDHK4_TYR", "PINK1_TYR", "PYK2", 
+            "RET", "ROS", "SRC", "SRMS", "SYK", "TEC", "TESK1_TYR", "TIE2", "TNK1", 
+            "TNNI3K_TYR", "TRKA", "TRKB", "TRKC", "TXK", "TYK2", "TYRO3", "VEGFR1", "VEGFR2", 
+            "VEGFR3", "WEE1_TYR", "YES", "ZAP70"
+        ],
+        "indexes": {
+            "SiteID": "PRIMARY"
+        }
     }
 }
 
@@ -421,6 +480,61 @@ QUERY_TEMPLATES = {
 
     "count_structural_annotations": """
         SELECT COUNT(*) as count FROM `STY_Structural_Annotations`
+    """, 
+    "get_cantley_st_kinase_scores": """
+        SELECT * FROM `Cantley_Kinome_Scores_All_STs`
+        WHERE `SiteID` = :site_id
+        /* Uses primary key */
+    """,
+
+    "get_cantley_st_kinase_scores_batch": """
+        SELECT * FROM `Cantley_Kinome_Scores_All_STs`
+        WHERE `SiteID` IN :site_ids
+        /* Uses primary key */
+    """,
+
+    "get_cantley_y_kinase_scores": """
+        SELECT * FROM `Cantley_Kinome_Scores_All_Ys`
+        WHERE `SiteID` = :site_id
+        /* Uses primary key */
+    """,
+
+    "get_cantley_y_kinase_scores_batch": """
+        SELECT * FROM `Cantley_Kinome_Scores_All_Ys`
+        WHERE `SiteID` IN :site_ids
+        /* Uses primary key */
+    """,
+
+    "get_cantley_st_top_kinases": """
+        SELECT `SiteID`, :kinase_names, `Motif`
+        FROM `Cantley_Kinome_Scores_All_STs`
+        WHERE `SiteID` = :site_id
+        /* Uses primary key */
+    """,
+
+    "get_cantley_y_top_kinases": """
+        SELECT `SiteID`, :kinase_names, `Motif`
+        FROM `Cantley_Kinome_Scores_All_Ys`
+        WHERE `SiteID` = :site_id
+        /* Uses primary key */
+    """,
+
+    "get_sites_by_cantley_st_kinase": """
+        SELECT `SiteID`, `Motif`, `:kinase_name`
+        FROM `Cantley_Kinome_Scores_All_STs`
+        WHERE `:kinase_name` >= :score_threshold
+        ORDER BY `:kinase_name` DESC
+        LIMIT :limit
+        /* Uses full table scan with filter */
+    """,
+
+    "get_sites_by_cantley_y_kinase": """
+        SELECT `SiteID`, `Motif`, `:kinase_name`
+        FROM `Cantley_Kinome_Scores_All_Ys`
+        WHERE `:kinase_name` >= :score_threshold
+        ORDER BY `:kinase_name` DESC
+        LIMIT :limit
+        /* Uses full table scan with filter */
     """
 }
 
@@ -1948,6 +2062,469 @@ def get_comprehensive_site_data_batch(site_ids: List[str]) -> Dict[str, Dict]:
             result[site_id] = integrated_data
     
     return result
+
+
+
+def get_cantley_st_kinase_scores(site_id: str) -> Optional[Dict]:
+    """
+    Get Cantley lab S/T kinase scores for a specific phosphosite.
+    
+    Args:
+        site_id: Site ID in format 'UniProtID_ResidueNumber'
+        
+    Returns:
+        Dictionary with kinase scores or None if not found
+    """
+    # Check cache first
+    cache_key = f"cantley_st_scores_{site_id}"
+    if cache_key in QUERY_CACHE and is_cache_valid(cache_key):
+        PERFORMANCE_METRICS["cache_hits"] += 1
+        return QUERY_CACHE[cache_key]
+    
+    PERFORMANCE_METRICS["cache_misses"] += 1
+    
+    try:
+        query = QUERY_TEMPLATES["get_cantley_st_kinase_scores"]
+        df = execute_query(query, {"site_id": site_id})
+        
+        if df.empty:
+            logger.warning(f"No Cantley S/T kinase scores found for {site_id}")
+            # Cache the negative result too
+            QUERY_CACHE[cache_key] = None
+            CACHE_TIMESTAMPS[cache_key] = time.time()
+            return None
+            
+        # Convert first row to dictionary
+        result = df.iloc[0].to_dict()
+        
+        # Convert scores to a separate dictionary
+        scores = {}
+        for key, value in result.items():
+            if key not in ['SiteID', 'Motif'] and pd.notna(value):
+                scores[key] = float(value)
+        
+        # Create final result with organized structure
+        final_result = {
+            'site_id': site_id,
+            'motif': result.get('Motif', ''),
+            'scores': scores
+        }
+        
+        # Cache the result
+        QUERY_CACHE[cache_key] = final_result
+        CACHE_TIMESTAMPS[cache_key] = time.time()
+        
+        return final_result
+    except Exception as e:
+        logger.error(f"Error getting Cantley S/T kinase scores: {e}")
+        return None
+
+def get_cantley_st_kinase_scores_batch(site_ids: List[str]) -> Dict[str, Dict]:
+    """
+    Get Cantley lab S/T kinase scores for multiple phosphosites in a batch.
+    
+    Args:
+        site_ids: List of site IDs in format 'UniProtID_ResidueNumber'
+        
+    Returns:
+        Dictionary mapping site IDs to dictionaries of scores
+    """
+    if not site_ids:
+        return {}
+    
+    # Check cache first for all sites
+    cached_results = {}
+    missing_sites = []
+    
+    for site_id in site_ids:
+        cache_key = f"cantley_st_scores_{site_id}"
+        if cache_key in QUERY_CACHE and is_cache_valid(cache_key):
+            PERFORMANCE_METRICS["cache_hits"] += 1
+            cached_value = QUERY_CACHE[cache_key]
+            if cached_value is not None:  # Don't include None values
+                cached_results[site_id] = cached_value
+        else:
+            PERFORMANCE_METRICS["cache_misses"] += 1
+            missing_sites.append(site_id)
+    
+    # If all results were in cache, return immediately
+    if not missing_sites:
+        return cached_results
+        
+    try:
+        # Use the batch helper function for missing sites
+        query = QUERY_TEMPLATES["get_cantley_st_kinase_scores_batch"]
+        df = execute_batch_query(
+            query, 
+            missing_sites, 
+            batch_size=BATCH_SIZES["phosphosites"],  # Use the same batch size as phosphosites
+            id_param_name="site_ids"
+        )
+        
+        if not df.empty:
+            # Convert to dictionary of dictionaries
+            for _, row in df.iterrows():
+                row_dict = row.to_dict()
+                if "SiteID" in row_dict:
+                    site_id = row_dict["SiteID"]
+                    
+                    # Convert scores to a separate dictionary
+                    scores = {}
+                    for key, value in row_dict.items():
+                        if key not in ['SiteID', 'Motif'] and pd.notna(value):
+                            scores[key] = float(value)
+                    
+                    # Create final result with organized structure
+                    final_result = {
+                        'site_id': site_id,
+                        'motif': row_dict.get('Motif', ''),
+                        'scores': scores
+                    }
+                    
+                    # Add to results
+                    cached_results[site_id] = final_result
+                    # Also update cache
+                    cache_key = f"cantley_st_scores_{site_id}"
+                    QUERY_CACHE[cache_key] = final_result
+                    CACHE_TIMESTAMPS[cache_key] = time.time()
+        
+        # Cache negative results for missing sites
+        for site_id in missing_sites:
+            if site_id not in cached_results:
+                cache_key = f"cantley_st_scores_{site_id}"
+                QUERY_CACHE[cache_key] = None
+                CACHE_TIMESTAMPS[cache_key] = time.time()
+                
+        logger.info(f"Retrieved Cantley S/T kinase scores for {len(cached_results)} out of {len(site_ids)} phosphosites")
+        return cached_results
+    except Exception as e:
+        logger.error(f"Error getting batch Cantley S/T kinase scores: {e}")
+        return cached_results  # Return whatever was found in cache even if the rest failed
+
+def get_cantley_y_kinase_scores(site_id: str) -> Optional[Dict]:
+    """
+    Get Cantley lab Y kinase scores for a specific phosphosite.
+    
+    Args:
+        site_id: Site ID in format 'UniProtID_ResidueNumber'
+        
+    Returns:
+        Dictionary with kinase scores or None if not found
+    """
+    # Check cache first
+    cache_key = f"cantley_y_scores_{site_id}"
+    if cache_key in QUERY_CACHE and is_cache_valid(cache_key):
+        PERFORMANCE_METRICS["cache_hits"] += 1
+        return QUERY_CACHE[cache_key]
+    
+    PERFORMANCE_METRICS["cache_misses"] += 1
+    
+    try:
+        query = QUERY_TEMPLATES["get_cantley_y_kinase_scores"]
+        df = execute_query(query, {"site_id": site_id})
+        
+        if df.empty:
+            logger.warning(f"No Cantley Y kinase scores found for {site_id}")
+            # Cache the negative result too
+            QUERY_CACHE[cache_key] = None
+            CACHE_TIMESTAMPS[cache_key] = time.time()
+            return None
+            
+        # Convert first row to dictionary
+        result = df.iloc[0].to_dict()
+        
+        # Convert scores to a separate dictionary
+        scores = {}
+        for key, value in result.items():
+            if key not in ['SiteID', 'Motif'] and pd.notna(value):
+                scores[key] = float(value)
+        
+        # Create final result with organized structure
+        final_result = {
+            'site_id': site_id,
+            'motif': result.get('Motif', ''),
+            'scores': scores
+        }
+        
+        # Cache the result
+        QUERY_CACHE[cache_key] = final_result
+        CACHE_TIMESTAMPS[cache_key] = time.time()
+        
+        return final_result
+    except Exception as e:
+        logger.error(f"Error getting Cantley Y kinase scores: {e}")
+        return None
+
+def get_cantley_y_kinase_scores_batch(site_ids: List[str]) -> Dict[str, Dict]:
+    """
+    Get Cantley lab Y kinase scores for multiple phosphosites in a batch.
+    
+    Args:
+        site_ids: List of site IDs in format 'UniProtID_ResidueNumber'
+        
+    Returns:
+        Dictionary mapping site IDs to dictionaries of scores
+    """
+    if not site_ids:
+        return {}
+    
+    # Check cache first for all sites
+    cached_results = {}
+    missing_sites = []
+    
+    for site_id in site_ids:
+        cache_key = f"cantley_y_scores_{site_id}"
+        if cache_key in QUERY_CACHE and is_cache_valid(cache_key):
+            PERFORMANCE_METRICS["cache_hits"] += 1
+            cached_value = QUERY_CACHE[cache_key]
+            if cached_value is not None:  # Don't include None values
+                cached_results[site_id] = cached_value
+        else:
+            PERFORMANCE_METRICS["cache_misses"] += 1
+            missing_sites.append(site_id)
+    
+    # If all results were in cache, return immediately
+    if not missing_sites:
+        return cached_results
+        
+    try:
+        # Use the batch helper function for missing sites
+        query = QUERY_TEMPLATES["get_cantley_y_kinase_scores_batch"]
+        df = execute_batch_query(
+            query, 
+            missing_sites, 
+            batch_size=BATCH_SIZES["phosphosites"],  # Use the same batch size as phosphosites
+            id_param_name="site_ids"
+        )
+        
+        if not df.empty:
+            # Convert to dictionary of dictionaries
+            for _, row in df.iterrows():
+                row_dict = row.to_dict()
+                if "SiteID" in row_dict:
+                    site_id = row_dict["SiteID"]
+                    
+                    # Convert scores to a separate dictionary
+                    scores = {}
+                    for key, value in row_dict.items():
+                        if key not in ['SiteID', 'Motif'] and pd.notna(value):
+                            scores[key] = float(value)
+                    
+                    # Create final result with organized structure
+                    final_result = {
+                        'site_id': site_id,
+                        'motif': row_dict.get('Motif', ''),
+                        'scores': scores
+                    }
+                    
+                    # Add to results
+                    cached_results[site_id] = final_result
+                    # Also update cache
+                    cache_key = f"cantley_y_scores_{site_id}"
+                    QUERY_CACHE[cache_key] = final_result
+                    CACHE_TIMESTAMPS[cache_key] = time.time()
+        
+        # Cache negative results for missing sites
+        for site_id in missing_sites:
+            if site_id not in cached_results:
+                cache_key = f"cantley_y_scores_{site_id}"
+                QUERY_CACHE[cache_key] = None
+                CACHE_TIMESTAMPS[cache_key] = time.time()
+                
+        logger.info(f"Retrieved Cantley Y kinase scores for {len(cached_results)} out of {len(site_ids)} phosphosites")
+        return cached_results
+    except Exception as e:
+        logger.error(f"Error getting batch Cantley Y kinase scores: {e}")
+        return cached_results  # Return whatever was found in cache even if the rest failed
+
+def get_cantley_top_kinases(site_id: str, residue_type: str = None, top_n: int = 5) -> Dict:
+    """
+    Get top predicted kinases for a phosphosite from Cantley lab scores.
+    Automatically determines whether to use S/T or Y kinases based on the residue type.
+    
+    Args:
+        site_id: Site ID in format 'UniProtID_ResidueNumber'
+        residue_type: Optional residue type ('S', 'T', or 'Y'). If None, determined from site_id.
+        top_n: Number of top kinases to return
+        
+    Returns:
+        Dictionary with top kinases and their scores
+    """
+    # Determine residue type if not provided
+    if residue_type is None:
+        # Try to extract from site_id
+        parts = site_id.split('_')
+        if len(parts) >= 2:
+            # Check for residue type in second part
+            match = re.match(r'([STY])(\d+)', parts[1])
+            if match:
+                residue_type = match.group(1)
+            else:
+                # If not found, check if we have phosphosite data
+                site_data = get_phosphosite_data(site_id)
+                if site_data and 'Residue' in site_data:
+                    residue_type = site_data['Residue']
+                else:
+                    # Default to S/T if we can't determine
+                    residue_type = 'S'
+        else:
+            # Default to S/T if malformed site_id
+            residue_type = 'S'
+    
+    # Get appropriate kinase scores
+    if residue_type.upper() == 'Y':
+        scores_data = get_cantley_y_kinase_scores(site_id)
+    else:  # S or T
+        scores_data = get_cantley_st_kinase_scores(site_id)
+    
+    if not scores_data or 'scores' not in scores_data:
+        return {
+            'site_id': site_id,
+            'residue_type': residue_type.upper(),
+            'top_kinases': [],
+            'motif': ''
+        }
+    
+    # Sort kinases by score and get top N
+    sorted_kinases = sorted(
+        [(kinase, score) for kinase, score in scores_data['scores'].items()],
+        key=lambda x: x[1],
+        reverse=True
+    )
+    
+    top_kinases = sorted_kinases[:top_n]
+    
+    return {
+        'site_id': site_id,
+        'residue_type': residue_type.upper(),
+        'top_kinases': [{'kinase': k, 'score': s} for k, s in top_kinases],
+        'motif': scores_data.get('motif', '')
+    }
+
+def get_sites_by_cantley_kinase(kinase_name: str, score_threshold: float = 0.9, limit: int = 100) -> List[Dict]:
+    """
+    Find sites with high prediction scores for a specific kinase using Cantley lab scores.
+    Automatically determines whether to look in S/T or Y table based on kinase name.
+    
+    Args:
+        kinase_name: Name of the kinase to look for
+        score_threshold: Minimum score to include (0-1)
+        limit: Maximum number of sites to return
+        
+    Returns:
+        List of sites with high scores for the specified kinase
+    """
+    # Check cache first
+    cache_key = f"sites_by_cantley_{kinase_name}_{score_threshold}_{limit}"
+    if cache_key in QUERY_CACHE and is_cache_valid(cache_key):
+        PERFORMANCE_METRICS["cache_hits"] += 1
+        return QUERY_CACHE[cache_key]
+    
+    PERFORMANCE_METRICS["cache_misses"] += 1
+    
+    # Determine which table to query based on kinase name
+    # List of kinases that exist only in the Y table
+    y_specific_kinases = [
+        "ABL", "ACK", "ALK", "ARG", "AXL", "BLK", "BMPR2_TYR", "BRK", "BTK", "CSFR", 
+        "CSK", "CTK", "DDR1", "DDR2", "EGFR", "EPHA1", "EPHA2", "EPHA3", "EPHA4", "EPHA5", 
+        "EPHA6", "EPHA7", "EPHA8", "EPHB1", "EPHB2", "EPHB3", "EPHB4", "ETK", "FAK", "FER", 
+        "FES", "FGFR1", "FGFR2", "FGFR3", "FGFR4", "FGR", "FLT3", "FRK", "FYN", "HCK", 
+        "HER2", "HER4", "IGF1R", "INSR", "IRR", "ITK", "JAK1", "JAK2", "JAK3", "KIT", 
+        "LCK", "LIMK1_TYR", "LIMK2_TYR", "LTK", "LYN", "MER", "MET", "MKK4_TYR", "MKK6_TYR", 
+        "MKK7_TYR", "MST1R", "MUSK", "MYT1_TYR", "NEK10_TYR", "PDGFRA", "PDGFRB", "PDHK1_TYR", 
+        "PDHK3_TYR", "PDHK4_TYR", "PINK1_TYR", "PYK2", "RET", "ROS", "SRC", "SRMS", "SYK", 
+        "TEC", "TESK1_TYR", "TIE2", "TNK1", "TNNI3K_TYR", "TRKA", "TRKB", "TRKC", "TXK", 
+        "TYK2", "TYRO3", "VEGFR1", "VEGFR2", "VEGFR3", "WEE1_TYR", "YES", "ZAP70"
+    ]
+    
+    # Check if this kinase is Y-specific
+    is_y_kinase = kinase_name in y_specific_kinases or kinase_name.endswith("_TYR")
+    
+    try:
+        if is_y_kinase:
+            query = QUERY_TEMPLATES["get_sites_by_cantley_y_kinase"]
+        else:
+            query = QUERY_TEMPLATES["get_sites_by_cantley_st_kinase"]
+        
+        # Replace the kinase placeholder in the query
+        modified_query = query.replace(':kinase_name', kinase_name)
+        
+        df = execute_query(modified_query, {
+            "score_threshold": score_threshold,
+            "limit": limit
+        })
+        
+        results = []
+        if not df.empty:
+            for _, row in df.iterrows():
+                site_id = row['SiteID']
+                motif = row.get('Motif', '')
+                score = float(row.get(kinase_name, 0.0))
+                
+                results.append({
+                    'site_id': site_id,
+                    'motif': motif,
+                    'score': score
+                })
+        
+        # Cache the result
+        QUERY_CACHE[cache_key] = results
+        CACHE_TIMESTAMPS[cache_key] = time.time()
+        
+        return results
+    except Exception as e:
+        logger.error(f"Error finding sites by Cantley kinase {kinase_name}: {e}")
+        return []
+
+def get_cantley_kinase_names(residue_type: str = 'all') -> Dict[str, List[str]]:
+    """
+    Get list of available kinase names in the Cantley datasets.
+    
+    Args:
+        residue_type: Type of kinases to return - 'S', 'T', 'Y', or 'all'
+        
+    Returns:
+        Dictionary with kinase names by type
+    """
+    # Check cache first
+    cache_key = f"cantley_kinase_names_{residue_type}"
+    if cache_key in QUERY_CACHE and is_cache_valid(cache_key):
+        PERFORMANCE_METRICS["cache_hits"] += 1
+        return QUERY_CACHE[cache_key]
+    
+    PERFORMANCE_METRICS["cache_misses"] += 1
+    
+    try:
+        st_kinases = []
+        y_kinases = []
+        
+        # Get S/T kinases if needed
+        if residue_type.lower() in ['s', 't', 'all']:
+            query = "SHOW COLUMNS FROM `Cantley_Kinome_Scores_All_STs` WHERE Field != 'SiteID' AND Field != 'Motif'"
+            df = execute_query(query)
+            if not df.empty:
+                st_kinases = df['Field'].tolist()
+        
+        # Get Y kinases if needed
+        if residue_type.lower() in ['y', 'all']:
+            query = "SHOW COLUMNS FROM `Cantley_Kinome_Scores_All_Ys` WHERE Field != 'SiteID' AND Field != 'Motif'"
+            df = execute_query(query)
+            if not df.empty:
+                y_kinases = df['Field'].tolist()
+        
+        result = {
+            'S/T_kinases': st_kinases,
+            'Y_kinases': y_kinases
+        }
+        
+        # Cache the result
+        QUERY_CACHE[cache_key] = result
+        CACHE_TIMESTAMPS[cache_key] = time.time()
+        
+        return result
+    except Exception as e:
+        logger.error(f"Error getting Cantley kinase names: {e}")
+        return {'S/T_kinases': [], 'Y_kinases': []}
 
 def clear_cache():
     """Clear the query cache."""
