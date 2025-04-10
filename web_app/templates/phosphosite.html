@@ -214,6 +214,24 @@
             </div>
             {% endif %}
 
+
+            <!-- ADD YOUR NEW KINASE SECTIONS HERE -->
+            <!-- Kinase Analysis Visualizations -->
+            {% if kinase_heatmap %}
+            <div class="kinase-visualization-wrapper">
+                <h2 class="mt-5 mb-3">Kinase Prediction Analysis</h2>
+                {{ kinase_heatmap|safe }}
+            </div>
+            {% endif %}
+
+            <!-- Detailed Kinase Report -->
+            {% if kinase_html %}
+            <div class="kinase-report-wrapper">
+                {{ kinase_html|safe }}
+            </div>
+            {% endif %}
+            <!-- END OF NEW SECTIONS -->
+
             <!-- Phosphosite Table -->
             {% if phosphosites_html %}
                 {{ phosphosites_html|safe }}

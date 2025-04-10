@@ -87,6 +87,13 @@ from protein_explorer.analysis.network_kinase_predictor_2 import (
 from protein_explorer.visualization.protein_phosphosite_network import create_phosphosite_network_visualization
 from protein_explorer.visualization.protein_sequence_phosphosite_network import create_sequence_network_visualization
 
+from protein_explorer.analysis.Cantley_Kinase_Scorer import (
+    process_matches_for_kinase_scoring,
+    create_protein_kinase_report,
+    get_html_protein_kinase_report,
+    get_proteins_kinase_heatmap
+)
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -1232,27 +1239,7 @@ def phosphosite_analysis():
             # Log the removal for debugging purposes
             logger.info(f"Removed unwanted fields ({', '.join(fields_to_remove)}) from all result objects")
 
-            # Debug print statements for sequence_matches - the correct way
-            print("SEQUENCE MATCHES")
-            print(f"Number of site keys: {len(results['sequence_matches'])}")
-            print("First few site keys:", list(results['sequence_matches'].keys())[:5])
-            # Print sample content for one key if available
-            if results['sequence_matches'] and list(results['sequence_matches'].keys()):
-                sample_key = list(results['sequence_matches'].keys())[0]
-                print(f"Sample matches for site {sample_key}: {results['sequence_matches'][sample_key][:2]}")
-                print(f"Total matches for site {sample_key}: {len(results['sequence_matches'][sample_key])}")
-
-            # Debug print statements for structural_matches - the correct way
-            print("STRUCTURE MATCHES")
-            print(f"Number of site keys: {len(results['structural_matches'])}")
-            print("First few site keys:", list(results['structural_matches'].keys())[:5])
-            # Print sample content for one key if available
-            if results['structural_matches'] and list(results['structural_matches'].keys()):
-                sample_key = list(results['structural_matches'].keys())[0]
-                print(f"Sample matches for site {sample_key}: {results['structural_matches'][sample_key][:2]}")
-                print(f"Total matches for site {sample_key}: {len(results['structural_matches'][sample_key])}")
-            # Log the removal for debugging purposes
-            logger.info("DISEASE field removed from all result objects")
+            
             
             # Generate structural network visualization
             network_visualization = create_phosphosite_network_visualization(
@@ -1270,47 +1257,64 @@ def phosphosite_analysis():
                 results['sequence_matches']
             )
             
-            # Return results including enhanced data and network visualizations
-            print("OG PHOSPHOSITES")
-            print(results['phosphosites'][:5])
-            print(len(phosphosites))
-            print("Structure PHOSPHOSITES")
-            print(results['phosphosites_structure'][:5])
-            print(len(results['phosphosites_structure']))
-            print("Sequence PHOSPHOSITES")
-            print(results['phosphosites_sequence'][:5])
-            print(len(results['phosphosites_sequence']))
-
-            # Debug print statements for sequence_matches - the correct way
-            print("SEQUENCE MATCHES")
-            print(f"Number of site keys: {len(results['sequence_matches'])}")
-            print("First few site keys:", list(results['sequence_matches'].keys())[:5])
-            # Print sample content for one key if available
-            if results['sequence_matches'] and list(results['sequence_matches'].keys()):
-                sample_key = list(results['sequence_matches'].keys())[0]
-                print(f"Sample matches for site {sample_key}: {results['sequence_matches'][sample_key][:2]}")
-                print(f"Total matches for site {sample_key}: {len(results['sequence_matches'][sample_key])}")
-
-            # Debug print statements for structural_matches - the correct way
-            print("STRUCTURE MATCHES")
-            print(f"Number of site keys: {len(results['structural_matches'])}")
-            print("First few site keys:", list(results['structural_matches'].keys())[:5])
-            # Print sample content for one key if available
-            if results['structural_matches'] and list(results['structural_matches'].keys()):
-                sample_key = list(results['structural_matches'].keys())[0]
-                print(f"Sample matches for site {sample_key}: {results['structural_matches'][sample_key][:2]}")
-                print(f"Total matches for site {sample_key}: {len(results['structural_matches'][sample_key])}")
+            # Create kinase analysis for the protein's phosphosites
+            if results['phosphosites'] and (results['structural_matches'] or results['sequence_matches']):
+                try:
+                    print("RUNNING KINASE REPORT")
+                    # Generate comprehensive kinase report
+                    kinase_report = create_protein_kinase_report(
+                        results['protein_info']['uniprot_id'],
+                        results['phosphosites'],
+                        structural_matches=results['structural_matches'],
+                        sequence_matches=results['sequence_matches'],
+                        match_type="combined",  # Use both structural and sequence matches
+                        include_heatmap=True,
+                        include_family_analysis=True,
+                        top_n_kinases=10
+                    )
+                    print("KINASE REPORT")
+                    print(kinase_report)
+                    # Generate HTML report for display
+                    kinase_html = get_html_protein_kinase_report(kinase_report)
+                    
+                    # Add to results
+                    results['kinase_report'] = kinase_report
+                    results['kinase_html'] = kinase_html
+                    
+                    # Also generate a standalone kinase heatmap for the top 10 sites
+                    try:
+                        kinase_heatmap = get_proteins_kinase_heatmap(
+                            results['protein_info']['uniprot_id'],
+                            results['phosphosites'][:10],  # Limit to top 10 sites for performance
+                            structural_matches=results['structural_matches'],
+                            sequence_matches=results['sequence_matches'],
+                            match_type="structural"  # Use structural matches for the heatmap
+                        )
+                        results['kinase_heatmap'] = kinase_heatmap
+                    except Exception as heatmap_err:
+                        logger.error(f"Error generating kinase heatmap: {heatmap_err}")
+                        results['kinase_heatmap'] = f"<div class='alert alert-warning'>Error generating kinase heatmap: {str(heatmap_err)}</div>"
+                    
+                except Exception as kinase_err:
+                    logger.error(f"Error generating kinase analysis: {kinase_err}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    results['kinase_html'] = f"<div class='alert alert-warning'>Error generating kinase analysis: {str(kinase_err)}</div>"
+            else:
+                results['kinase_html'] = "<div class='alert alert-info'>No phosphosite data available for kinase analysis.</div>"
 
 
             return render_template('phosphosite.html', 
-                                  protein_info=results['protein_info'],
-                                  phosphosites=results['phosphosites'],
-                                  phosphosites_html=results.get('phosphosites_html'),
-                                  structural_matches=results['structural_matches'],
-                                  sequence_matches=results.get('sequence_matches'),
-                                  network_visualization=network_visualization,
-                                  sequence_network_visualization=sequence_network_visualization,
-                                  error=results.get('error'))
+                                protein_info=results['protein_info'],
+                                phosphosites=results['phosphosites'],
+                                phosphosites_html=results.get('phosphosites_html'),
+                                structural_matches=results['structural_matches'],
+                                sequence_matches=results.get('sequence_matches'),
+                                network_visualization=network_visualization,
+                                sequence_network_visualization=sequence_network_visualization,
+                                kinase_html=results.get('kinase_html'),  # Add this
+                                kinase_heatmap=results.get('kinase_heatmap'),  # Add this
+                                error=results.get('error'))
                 
         except Exception as e:
             print(f"Error in phosphosite analysis: {e}")

@@ -1,0 +1,80 @@
+2025-04-10 14:41:53,094 - __main__ - INFO - Starting bulk loading process for Cantley kinome scores
+2025-04-10 14:41:53,095 - __main__ - INFO - Found S/T kinase scores file: F:/Kinome/motif_scores_percentile_STs.csv
+2025-04-10 14:41:53,095 - __main__ - INFO - Found Y kinase scores file: F:/Kinome/motif_scores_percentile_Ys.csv
+2025-04-10 14:41:53,314 - mysql.connector - INFO - package: mysql.connector.plugins
+2025-04-10 14:41:53,315 - mysql.connector - INFO - plugin_name: caching_sha2_password
+2025-04-10 14:41:53,316 - mysql.connector - INFO - AUTHENTICATION_PLUGIN_CLASS: MySQLCachingSHA2PasswordAuthPlugin
+2025-04-10 14:41:53,366 - __main__ - INFO - Connected to MySQL using mysql.connector
+2025-04-10 14:41:53,367 - __main__ - INFO - Loading S/T kinase scores...
+2025-04-10 14:41:53,416 - __main__ - INFO - S/T kinase scores table exists with 0 rows
+2025-04-10 14:41:59,831 - __main__ - INFO - Dropping table...
+2025-04-10 14:41:59,884 - __main__ - INFO - Creating S/T kinase scores table...
+2025-04-10 14:41:59,970 - __main__ - INFO - S/T kinase scores table doesn't exist yet: 'MySQLCursor' object has no attribute 'connection'
+2025-04-10 14:41:59,970 - __main__ - INFO - Creating S/T kinase scores table...
+2025-04-10 14:41:59,994 - __main__ - ERROR - Error during S/T kinase scores bulk load: 'MySQLCursor' object has no attribute 'connection'
+2025-04-10 14:41:59,994 - __main__ - WARNING - Failed to load S/T kinase scores using Python
+2025-04-10 14:41:59,995 - __main__ - INFO - Loading Y kinase scores...
+2025-04-10 14:42:00,040 - __main__ - INFO - Y kinase scores table exists with 0 rows
+2025-04-10 14:42:04,448 - __main__ - INFO - Dropping table...
+2025-04-10 14:42:04,488 - __main__ - INFO - Creating Y kinase scores table...
+2025-04-10 14:42:04,530 - __main__ - INFO - Y kinase scores table doesn't exist yet: 'MySQLCursor' object has no attribute 'connection'
+2025-04-10 14:42:04,531 - __main__ - INFO - Creating Y kinase scores table...
+2025-04-10 14:42:04,549 - __main__ - ERROR - Error during Y kinase scores bulk load: 'MySQLCursor' object has no attribute 'connection'
+2025-04-10 14:42:04,550 - __main__ - WARNING - Failed to load Y kinase scores using Python
+2025-04-10 14:42:04,551 - __main__ - INFO - Trying direct mysql command for S/T kinase scores...
+2025-04-10 14:42:04,551 - __main__ - INFO - Attempting to use mysql command-line client for S/T kinase scores...
+2025-04-10 14:42:04,555 - __main__ - INFO - Executing: mysql --host=35.245.113.195 --user=root --password=@Bismark6 --port=3306 --database=kinoplex-db --local-infile=1 --execute=source load_st_data.sql
+2025-04-10 14:46:00,309 - __main__ - INFO - MySQL command for S/T kinase scores executed successfully
+2025-04-10 14:46:00,310 - __main__ - INFO - Output: COUNT(*)
+1053868
+
+2025-04-10 14:46:00,311 - __main__ - INFO - S/T kinase scores loaded successfully using mysql command
+2025-04-10 14:46:00,311 - __main__ - INFO - Trying direct mysql command for Y kinase scores...
+2025-04-10 14:46:00,311 - __main__ - INFO - Attempting to use mysql command-line client for Y kinase scores...
+2025-04-10 14:46:00,315 - __main__ - INFO - Executing: mysql --host=35.245.113.195 --user=root --password=@Bismark6 --port=3306 --database=kinoplex-db --local-infile=1 --execute=source load_y_data.sql
+2025-04-10 14:46:25,905 - __main__ - INFO - MySQL command for Y kinase scores executed successfully
+2025-04-10 14:46:25,905 - __main__ - INFO - Output: COUNT(*)
+289888
+
+2025-04-10 14:46:25,905 - __main__ - INFO - Y kinase scores loaded successfully using mysql command
+2025-04-10 14:46:25,913 - __main__ - INFO - Script completed successfully
+2025-04-10 14:52:31,450 - __main__ - INFO - Starting bulk loading process for Cantley kinome scores
+2025-04-10 14:52:31,451 - __main__ - INFO - Found S/T kinase scores file: F:/Kinome/motif_scores_percentile_STs.csv
+2025-04-10 14:52:31,451 - __main__ - INFO - Found Y kinase scores file: F:/Kinome/motif_scores_percentile_Ys.csv
+2025-04-10 14:52:31,655 - mysql.connector - INFO - package: mysql.connector.plugins
+2025-04-10 14:52:31,658 - mysql.connector - INFO - plugin_name: caching_sha2_password
+2025-04-10 14:52:31,658 - mysql.connector - INFO - AUTHENTICATION_PLUGIN_CLASS: MySQLCachingSHA2PasswordAuthPlugin
+2025-04-10 14:52:31,701 - __main__ - INFO - Connected to MySQL using mysql.connector
+2025-04-10 14:52:31,701 - __main__ - INFO - Loading S/T kinase scores...
+2025-04-10 14:52:31,928 - __main__ - INFO - S/T kinase scores table exists with 1053868 rows
+2025-04-10 14:52:35,423 - __main__ - INFO - Dropping table...
+2025-04-10 14:52:35,485 - __main__ - INFO - Creating S/T kinase scores table...
+2025-04-10 14:52:35,555 - __main__ - INFO - S/T kinase scores table doesn't exist yet: 'MySQLCursor' object has no attribute 'connection'
+2025-04-10 14:52:35,556 - __main__ - INFO - Creating S/T kinase scores table...
+2025-04-10 14:52:35,565 - __main__ - ERROR - Error during S/T kinase scores bulk load: 'MySQLCursor' object has no attribute 'connection'
+2025-04-10 14:52:35,565 - __main__ - WARNING - Failed to load S/T kinase scores using Python
+2025-04-10 14:52:35,565 - __main__ - INFO - Loading Y kinase scores...
+2025-04-10 14:52:35,670 - __main__ - INFO - Y kinase scores table exists with 289888 rows
+2025-04-10 14:52:43,912 - __main__ - INFO - Dropping table...
+2025-04-10 14:52:43,955 - __main__ - INFO - Creating Y kinase scores table...
+2025-04-10 14:52:43,997 - __main__ - INFO - Y kinase scores table doesn't exist yet: 'MySQLCursor' object has no attribute 'connection'
+2025-04-10 14:52:43,997 - __main__ - INFO - Creating Y kinase scores table...
+2025-04-10 14:52:44,017 - __main__ - ERROR - Error during Y kinase scores bulk load: 'MySQLCursor' object has no attribute 'connection'
+2025-04-10 14:52:44,018 - __main__ - WARNING - Failed to load Y kinase scores using Python
+2025-04-10 14:52:44,018 - __main__ - INFO - Trying direct mysql command for S/T kinase scores...
+2025-04-10 14:52:44,019 - __main__ - INFO - Attempting to use mysql command-line client for S/T kinase scores...
+2025-04-10 14:52:44,021 - __main__ - INFO - Executing: mysql --host=35.245.113.195 --user=root --password=@Bismark6 --port=3306 --database=kinoplex-db --local-infile=1 --execute=source load_st_data.sql
+2025-04-10 14:58:12,365 - __main__ - INFO - MySQL command for S/T kinase scores executed successfully
+2025-04-10 14:58:12,366 - __main__ - INFO - Output: COUNT(*)
+1466524
+
+2025-04-10 14:58:12,366 - __main__ - INFO - S/T kinase scores loaded successfully using mysql command
+2025-04-10 14:58:12,366 - __main__ - INFO - Trying direct mysql command for Y kinase scores...
+2025-04-10 14:58:12,367 - __main__ - INFO - Attempting to use mysql command-line client for Y kinase scores...
+2025-04-10 14:58:12,435 - __main__ - INFO - Executing: mysql --host=35.245.113.195 --user=root --password=@Bismark6 --port=3306 --database=kinoplex-db --local-infile=1 --execute=source load_y_data.sql
+2025-04-10 14:58:44,803 - __main__ - INFO - MySQL command for Y kinase scores executed successfully
+2025-04-10 14:58:44,804 - __main__ - INFO - Output: COUNT(*)
+289888
+
+2025-04-10 14:58:44,805 - __main__ - INFO - Y kinase scores loaded successfully using mysql command
+2025-04-10 14:58:44,810 - __main__ - INFO - Script completed successfully
