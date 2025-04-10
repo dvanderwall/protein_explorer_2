@@ -64,8 +64,8 @@ def create_sequence_network_visualization(protein_uniprot_id, phosphosites=None,
     # Sanitize sequence matches data before processing
     processed_matches = sanitize_data(sequence_matches) if sequence_matches else {}
     
-    print('JSONIFIED PROCESSED MATCHES')
-    print(processed_matches)
+    #print('JSONIFIED PROCESSED MATCHES')
+    #print(processed_matches)
 
     # Create network visualization HTML
     html = """

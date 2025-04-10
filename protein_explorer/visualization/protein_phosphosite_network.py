@@ -95,7 +95,7 @@ def create_phosphosite_network_visualization(protein_uniprot_id, phosphosites=No
     <div id="structural-match-data" style="display: none;" data-matches='"""
     
     # Convert processed matches to JSON with proper handling
-    print("STRUCTURAL MATCHES")
+    #print("STRUCTURAL MATCHES")
     #print(structural_matches)
     processed_matches = structural_matches 
     try:
