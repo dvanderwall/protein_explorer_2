@@ -1,0 +1,92 @@
+2025-04-10 22:43:34,494 - __main__ - INFO - Starting bulk loading process for Cantley kinome scores
+2025-04-10 22:43:34,494 - __main__ - INFO - Found S/T kinase scores file: F:/Kinome/motif_scores_percentile_STs.csv
+2025-04-10 22:43:34,494 - __main__ - INFO - Found Y kinase scores file: F:/Kinome/motif_scores_percentile_Ys.csv
+2025-04-10 22:43:34,769 - mysql.connector - INFO - package: mysql.connector.plugins
+2025-04-10 22:43:34,770 - mysql.connector - INFO - plugin_name: caching_sha2_password
+2025-04-10 22:43:34,774 - mysql.connector - INFO - AUTHENTICATION_PLUGIN_CLASS: MySQLCachingSHA2PasswordAuthPlugin
+2025-04-10 22:43:34,812 - __main__ - INFO - Connected to MySQL using mysql.connector
+2025-04-10 22:43:34,812 - __main__ - INFO - Loading S/T kinase scores...
+2025-04-10 22:43:35,087 - __main__ - INFO - S/T kinase scores table exists with 1466524 rows
+2025-04-10 22:43:38,805 - __main__ - INFO - Dropping table...
+2025-04-10 22:43:38,950 - __main__ - INFO - Creating S/T kinase scores table...
+2025-04-10 22:43:39,026 - __main__ - INFO - S/T kinase scores table doesn't exist yet: 'MySQLCursor' object has no attribute 'connection'
+2025-04-10 22:43:39,026 - __main__ - INFO - Creating S/T kinase scores table...
+2025-04-10 22:43:39,058 - __main__ - ERROR - Error during S/T kinase scores bulk load: 'MySQLCursor' object has no attribute 'connection'
+2025-04-10 22:43:39,063 - __main__ - WARNING - Failed to load S/T kinase scores using Python
+2025-04-10 22:43:39,064 - __main__ - INFO - Loading Y kinase scores...
+2025-04-10 22:43:39,151 - __main__ - INFO - Y kinase scores table exists with 289888 rows
+2025-04-10 22:43:40,644 - __main__ - INFO - Dropping table...
+2025-04-10 22:43:40,684 - __main__ - INFO - Creating Y kinase scores table...
+2025-04-10 22:43:40,730 - __main__ - INFO - Y kinase scores table doesn't exist yet: 'MySQLCursor' object has no attribute 'connection'
+2025-04-10 22:43:40,730 - __main__ - INFO - Creating Y kinase scores table...
+2025-04-10 22:43:40,748 - __main__ - ERROR - Error during Y kinase scores bulk load: 'MySQLCursor' object has no attribute 'connection'
+2025-04-10 22:43:40,748 - __main__ - WARNING - Failed to load Y kinase scores using Python
+2025-04-10 22:43:40,748 - __main__ - ERROR - Script failed
+2025-04-10 22:52:28,363 - __main__ - INFO - Starting bulk loading process for Cantley kinome scores
+2025-04-10 22:52:28,363 - __main__ - INFO - Found S/T kinase scores file: F:/Kinome/motif_scores_percentile_STs.csv
+2025-04-10 22:52:28,363 - __main__ - INFO - Found Y kinase scores file: F:/Kinome/motif_scores_percentile_Ys.csv
+2025-04-10 22:52:28,552 - mysql.connector - INFO - package: mysql.connector.plugins
+2025-04-10 22:52:28,552 - mysql.connector - INFO - plugin_name: caching_sha2_password
+2025-04-10 22:52:28,560 - mysql.connector - INFO - AUTHENTICATION_PLUGIN_CLASS: MySQLCachingSHA2PasswordAuthPlugin
+2025-04-10 22:52:28,591 - __main__ - INFO - Connected to MySQL using mysql.connector
+2025-04-10 22:52:28,591 - __main__ - INFO - Loading S/T kinase scores...
+2025-04-10 22:52:28,639 - __main__ - INFO - S/T kinase scores table exists with 0 rows
+2025-04-10 22:52:32,349 - __main__ - INFO - Dropping table...
+2025-04-10 22:52:32,399 - __main__ - INFO - Creating S/T kinase scores table...
+2025-04-10 22:52:32,482 - __main__ - INFO - S/T kinase scores table created successfully
+2025-04-10 22:52:32,482 - __main__ - INFO - Starting S/T kinase scores bulk load process...
+2025-04-10 22:52:32,483 - __main__ - INFO - Disabling keys for faster loading...
+2025-04-10 22:52:32,528 - __main__ - ERROR - Error during S/T kinase scores bulk load: 1227 (42000): Access denied; you need (at least one of) the SUPER or SYSTEM_VARIABLES_ADMIN privilege(s) for this operation
+2025-04-10 22:52:32,528 - __main__ - WARNING - Failed to load S/T kinase scores using Python
+2025-04-10 22:52:32,528 - __main__ - INFO - Loading Y kinase scores...
+2025-04-10 22:52:32,569 - __main__ - INFO - Y kinase scores table exists with 0 rows
+2025-04-10 22:52:36,917 - __main__ - INFO - Dropping table...
+2025-04-10 22:52:36,955 - __main__ - INFO - Creating Y kinase scores table...
+2025-04-10 22:52:37,011 - __main__ - INFO - Y kinase scores table created successfully
+2025-04-10 22:52:37,012 - __main__ - INFO - Starting Y kinase scores bulk load process...
+2025-04-10 22:52:37,012 - __main__ - INFO - Disabling keys for faster loading...
+2025-04-10 22:52:37,056 - __main__ - ERROR - Error during Y kinase scores bulk load: 1227 (42000): Access denied; you need (at least one of) the SUPER or SYSTEM_VARIABLES_ADMIN privilege(s) for this operation
+2025-04-10 22:52:37,056 - __main__ - WARNING - Failed to load Y kinase scores using Python
+2025-04-10 22:52:37,056 - __main__ - INFO - Trying direct mysql command for S/T kinase scores...
+2025-04-10 22:52:37,056 - __main__ - INFO - Attempting to use mysql command-line client for S/T kinase scores...
+2025-04-10 22:52:37,061 - __main__ - INFO - Executing: mysql --host=35.245.113.195 --user=root --password=@Bismark6 --port=3306 --database=kinoplex-db --local-infile=1 --execute=source load_st_data.sql
+2025-04-10 22:58:15,110 - __main__ - INFO - MySQL command for S/T kinase scores executed successfully
+2025-04-10 22:58:15,110 - __main__ - INFO - Output: COUNT(*)
+1466524
+
+2025-04-10 22:58:15,110 - __main__ - INFO - S/T kinase scores loaded successfully using mysql command
+2025-04-10 22:58:15,110 - __main__ - INFO - Trying direct mysql command for Y kinase scores...
+2025-04-10 22:58:15,110 - __main__ - INFO - Attempting to use mysql command-line client for Y kinase scores...
+2025-04-10 22:58:15,110 - __main__ - INFO - Executing: mysql --host=35.245.113.195 --user=root --password=@Bismark6 --port=3306 --database=kinoplex-db --local-infile=1 --execute=source load_y_data.sql
+2025-04-10 22:58:47,241 - __main__ - INFO - MySQL command for Y kinase scores executed successfully
+2025-04-10 22:58:47,242 - __main__ - INFO - Output: COUNT(*)
+289888
+
+2025-04-10 22:58:47,242 - __main__ - INFO - Y kinase scores loaded successfully using mysql command
+2025-04-10 22:58:47,242 - __main__ - INFO - Performing final data verification...
+2025-04-10 22:58:47,407 - __main__ - INFO - Connected to MySQL using mysql.connector
+2025-04-10 22:58:47,469 - __main__ - INFO - S/T kinase scores table has 305 columns
+2025-04-10 22:58:47,721 - __main__ - INFO - S/T kinase scores table has 1466524 rows
+2025-04-10 22:58:47,744 - __main__ - INFO - Sample S/T kinase scores data:
+2025-04-10 22:58:47,744 - __main__ - INFO -   SiteID: A0A024R1R8_2, Motif: XXXXMSSHEG, AKT1: 0.849291, CDK1: 0.567473, ERK1: 0.711997
+2025-04-10 22:58:47,745 - __main__ - INFO -   SiteID: A0A024R1R8_3, Motif: XXXMSSHEGG, AKT1: 0.493179, CDK1: 0.211011, ERK1: 0.076732
+2025-04-10 22:58:47,746 - __main__ - INFO -   SiteID: A0A024R1R8_55, Motif: KGPLATGGIK, AKT1: 0.895036, CDK1: 0.767181, ERK1: 0.942412
+2025-04-10 22:58:47,746 - __main__ - INFO -   SiteID: A0A024R1R8_61, Motif: GGIKKSGKKX, AKT1: 0.932545, CDK1: 0.947473, ERK1: 0.779612
+2025-04-10 22:58:47,747 - __main__ - INFO -   SiteID: A0A024RBG1_100, Motif: YVYVLTVTEI, AKT1: 0.223171, CDK1: 0.147414, ERK1: 0.582576
+2025-04-10 22:58:53,313 - __main__ - INFO - Top kinases for random S/T sites:
+2025-04-10 22:58:53,314 - __main__ - INFO -   SiteID: Q14185_601, Motif: TISKDSFQIS, Top Kinase: GSK3B (Score: 0.893384)
+2025-04-10 22:58:53,314 - __main__ - INFO -   SiteID: P42702_771, Motif: GERDTSKMRV, Top Kinase: AKT1 (Score: 0.782648)
+2025-04-10 22:58:53,315 - __main__ - INFO -   SiteID: Q15413_923, Motif: YNLQMSTETL, Top Kinase: ACVR2A (Score: 0.848507)
+2025-04-10 22:58:53,336 - __main__ - INFO - Y kinase scores table has 95 columns
+2025-04-10 22:58:53,396 - __main__ - INFO - Y kinase scores table has 289888 rows
+2025-04-10 22:58:53,410 - __main__ - INFO - Sample Y kinase scores data:
+2025-04-10 22:58:53,412 - __main__ - INFO -   SiteID: A0A024RBG1_12, Motif: NQTRTYDREG, SRC: 0.4554, EGFR: 0.485888, JAK1: 0.150393
+2025-04-10 22:58:53,413 - __main__ - INFO -   SiteID: A0A024RBG1_140, Motif: PVHAEYLEKL, SRC: 0.255902, EGFR: 0.501411, JAK1: 0.726091
+2025-04-10 22:58:53,414 - __main__ - INFO -   SiteID: A0A024RBG1_42, Motif: VSSSRYPDQW, SRC: 0.0569496, EGFR: 0.258207, JAK1: 0.0138226
+2025-04-10 22:58:53,414 - __main__ - INFO -   SiteID: A0A024RBG1_68, Motif: AVREVYEEAG, SRC: 0.835223, EGFR: 0.621116, JAK1: 0.22122
+2025-04-10 22:58:53,415 - __main__ - INFO -   SiteID: A0A024RBG1_95, Motif: RKHRTYVYVL, SRC: 0.720306, EGFR: 0.94324, JAK1: 0.733673
+2025-04-10 22:58:53,875 - __main__ - INFO - Top kinases for random Y sites:
+2025-04-10 22:58:53,875 - __main__ - INFO -   SiteID: Q93074_1084, Motif: AELTGYCKSL, Top Kinase: JAK1 (Score: 0.564321)
+2025-04-10 22:58:53,875 - __main__ - INFO -   SiteID: Q9HD67_808, Motif: IARRVYRQLL, Top Kinase: JAK1 (Score: 0.865755)
+2025-04-10 22:58:53,875 - __main__ - INFO -   SiteID: P17213_286, Motif: HDRMVYLGLS, Top Kinase: JAK1 (Score: 0.892966)
+2025-04-10 22:58:53,875 - __main__ - INFO - Script completed successfully

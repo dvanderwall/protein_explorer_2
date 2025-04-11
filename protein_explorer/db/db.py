@@ -535,7 +535,18 @@ QUERY_TEMPLATES = {
         ORDER BY `:kinase_name` DESC
         LIMIT :limit
         /* Uses full table scan with filter */
-    """
+    """, 
+    "get_cantley_st_kinase_scores_by_motif": """
+        SELECT * FROM `Cantley_Kinome_Scores_All_STs`
+        WHERE `Motif` IN :site_ids
+        /* Searches in the Motif column which contains the actual site IDs */
+    """,
+
+    "get_cantley_y_kinase_scores_by_motif": """
+        SELECT * FROM `Cantley_Kinome_Scores_All_Ys`
+        WHERE `Motif` IN :site_ids
+        /* Searches in the Motif column which contains the actual site IDs */
+    """,
 }
 
 # Database connection URL
@@ -2504,6 +2515,11 @@ def get_cantley_kinase_names(residue_type: str = 'all') -> Dict[str, List[str]]:
             df = execute_query(query)
             if not df.empty:
                 st_kinases = df['Field'].tolist()
+                logger.info(f"Retrieved {len(st_kinases)} S/T kinases from database")
+            else:
+                logger.warning("No S/T kinases found in database, using default list")
+                # Provide a default list of common S/T kinases
+                st_kinases = ["PKA", "PKC", "PKG", "PKN", "CAMK", "CDK", "MAPK", "GSK", "AKT", "CK1", "CK2"]
         
         # Get Y kinases if needed
         if residue_type.lower() in ['y', 'all']:
@@ -2511,6 +2527,11 @@ def get_cantley_kinase_names(residue_type: str = 'all') -> Dict[str, List[str]]:
             df = execute_query(query)
             if not df.empty:
                 y_kinases = df['Field'].tolist()
+                logger.info(f"Retrieved {len(y_kinases)} Y kinases from database")
+            else:
+                logger.warning("No Y kinases found in database, using default list")
+                # Provide a default list of common Y kinases
+                y_kinases = ["SRC", "ABL", "JAK", "EGFR", "FGFR", "PDGFR", "VEGFR", "BTK", "SYK", "ZAP70"]
         
         result = {
             'S/T_kinases': st_kinases,
@@ -2524,7 +2545,95 @@ def get_cantley_kinase_names(residue_type: str = 'all') -> Dict[str, List[str]]:
         return result
     except Exception as e:
         logger.error(f"Error getting Cantley kinase names: {e}")
-        return {'S/T_kinases': [], 'Y_kinases': []}
+        # Return default kinase lists as fallback
+        default_result = {
+            'S/T_kinases': ["PKA", "PKC", "PKG", "PKN", "CAMK", "CDK", "MAPK", "GSK", "AKT", "CK1", "CK2"],
+            'Y_kinases': ["SRC", "ABL", "JAK", "EGFR", "FGFR", "PDGFR", "VEGFR", "BTK", "SYK", "ZAP70"]
+        }
+        return default_result
+    
+
+def get_cantley_st_kinase_scores_by_motif(site_ids: List[str]) -> Dict[str, Dict]:
+    """
+    Get Cantley lab S/T kinase scores for multiple phosphosites by searching in the Motif column.
+    
+    Args:
+        site_ids: List of site IDs in format 'UniProtID_ResidueNumber'
+        
+    Returns:
+        Dictionary mapping site IDs to dictionaries of scores
+    """
+    if not site_ids:
+        return {}
+    
+    # Check cache first for all sites
+    cached_results = {}
+    missing_sites = []
+    
+    for site_id in site_ids:
+        cache_key = f"cantley_st_scores_motif_{site_id}"
+        if cache_key in QUERY_CACHE and is_cache_valid(cache_key):
+            PERFORMANCE_METRICS["cache_hits"] += 1
+            cached_value = QUERY_CACHE[cache_key]
+            if cached_value is not None:  # Don't include None values
+                cached_results[site_id] = cached_value
+        else:
+            PERFORMANCE_METRICS["cache_misses"] += 1
+            missing_sites.append(site_id)
+    
+    # If all results were in cache, return immediately
+    if not missing_sites:
+        return cached_results
+        
+    try:
+        # Use the batch helper function for missing sites
+        query = QUERY_TEMPLATES["get_cantley_st_kinase_scores_by_motif"]
+        df = execute_batch_query(
+            query, 
+            missing_sites, 
+            batch_size=BATCH_SIZES["phosphosites"],
+            id_param_name="site_ids"
+        )
+        
+        if not df.empty:
+            # Convert to dictionary of dictionaries
+            for _, row in df.iterrows():
+                row_dict = row.to_dict()
+                if "Motif" in row_dict:
+                    site_id = row_dict["Motif"]  # Use Motif as the site_id
+                    
+                    # Convert scores to a separate dictionary
+                    scores = {}
+                    for key, value in row_dict.items():
+                        if key not in ['SiteID', 'Motif'] and pd.notna(value):
+                            scores[key] = float(value)
+                    
+                    # Create final result with organized structure
+                    final_result = {
+                        'site_id': site_id,
+                        'motif': site_id,  # The Motif column actually contains the site ID
+                        'scores': scores
+                    }
+                    
+                    # Add to results
+                    cached_results[site_id] = final_result
+                    # Also update cache
+                    cache_key = f"cantley_st_scores_motif_{site_id}"
+                    QUERY_CACHE[cache_key] = final_result
+                    CACHE_TIMESTAMPS[cache_key] = time.time()
+        
+        # Cache negative results for missing sites
+        for site_id in missing_sites:
+            if site_id not in cached_results:
+                cache_key = f"cantley_st_scores_motif_{site_id}"
+                QUERY_CACHE[cache_key] = None
+                CACHE_TIMESTAMPS[cache_key] = time.time()
+                
+        logger.info(f"Retrieved Cantley S/T kinase scores by Motif for {len(cached_results)} out of {len(site_ids)} phosphosites")
+        return cached_results
+    except Exception as e:
+        logger.error(f"Error getting batch Cantley S/T kinase scores by Motif: {e}")
+        return cached_results  # Return whatever was found in cache even if the rest failed
 
 def clear_cache():
     """Clear the query cache."""

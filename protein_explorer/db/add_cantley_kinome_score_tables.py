@@ -96,7 +96,7 @@ def try_connect_mysql():
     logger.error("Could not connect to MySQL with any available driver")
     return None, None
 
-def create_st_table(cursor):
+def create_st_table(cursor, connection):
     """Create the S/T kinase scores table with proper structure and indexes."""
     logger.info("Creating S/T kinase scores table...")
     
@@ -171,10 +171,10 @@ def create_st_table(cursor):
     """
     
     cursor.execute(create_table_query)
-    cursor.connection.commit()
+    connection.commit()  # Use connection directly instead of cursor.connection
     logger.info("S/T kinase scores table created successfully")
 
-def create_y_table(cursor):
+def create_y_table(cursor, connection):
     """Create the Y kinase scores table with proper structure and indexes."""
     logger.info("Creating Y kinase scores table...")
     
@@ -207,7 +207,7 @@ def create_y_table(cursor):
     """
     
     cursor.execute(create_table_query)
-    cursor.connection.commit()
+    connection.commit()  # Use connection directly instead of cursor.connection
     logger.info("Y kinase scores table created successfully")
 
 def bulk_load_st_data(connection, driver_type):
@@ -234,7 +234,7 @@ def bulk_load_st_data(connection, driver_type):
                 cursor.execute("DROP TABLE IF EXISTS `Cantley_Kinome_Scores_All_STs`")
                 connection.commit()
                 # Recreate table
-                create_st_table(cursor)
+                create_st_table(cursor, connection)
             elif choice == '2':
                 logger.info("Truncating table...")
                 cursor.execute("TRUNCATE TABLE `Cantley_Kinome_Scores_All_STs`")
@@ -250,7 +250,7 @@ def bulk_load_st_data(connection, driver_type):
         except Exception as e:
             logger.info(f"S/T kinase scores table doesn't exist yet: {e}")
             # Create the table
-            create_st_table(cursor)
+            create_st_table(cursor, connection)
         
         # Start the bulk load process
         logger.info("Starting S/T kinase scores bulk load process...")
@@ -266,13 +266,36 @@ def bulk_load_st_data(connection, driver_type):
         # Prepare the LOAD DATA INFILE statement with proper path formatting
         csv_path = ST_FILE_PATH.replace('\\', '/')
         
+        # Load data, skipping the first column (Unnamed: 0)
         load_query = """
         LOAD DATA LOCAL INFILE '{}'
         INTO TABLE `Cantley_Kinome_Scores_All_STs`
         FIELDS TERMINATED BY ','
         ENCLOSED BY '"'
         LINES TERMINATED BY '\\n'
-        IGNORE 1 LINES;
+        IGNORE 1 LINES
+        (@dummy, SiteID, Motif, AAK1, ACVR2A, ACVR2B, AKT1, AKT2, AKT3, ALK2, ALK4, ALPHAK3, AMPKA1, 
+        AMPKA2, ANKRD3, ASK1, ATM, ATR, AURA, AURB, AURC, BCKDK, BIKE, BMPR1A, BMPR1B, BMPR2, BRAF, 
+        BRSK1, BRSK2, BUB1, CAMK1A, CAMK1B, CAMK1D, CAMK1G, CAMK2A, CAMK2B, CAMK2D, CAMK2G, CAMK4, 
+        CAMKK1, CAMKK2, CAMLCK, CDC7, CDK1, CDK10, CDK12, CDK13, CDK14, CDK16, CDK17, CDK18, CDK19, 
+        CDK2, CDK3, CDK4, CDK5, CDK6, CDK7, CDK8, CDK9, CDKL1, CDKL5, CHAK1, CHAK2, CHK1, CHK2, CK1A, 
+        CK1A2, CK1D, CK1E, CK1G1, CK1G2, CK1G3, CK2A1, CK2A2, CLK1, CLK2, CLK3, CLK4, COT, CRIK, DAPK1, 
+        DAPK2, DAPK3, DCAMKL1, DCAMKL2, DLK, DMPK1, DNAPK, DRAK1, DSTYK, DYRK1A, DYRK1B, DYRK2, DYRK3, 
+        DYRK4, EEF2K, ERK1, ERK2, ERK5, ERK7, FAM20C, GAK, GCK, GCN2, GRK1, GRK2, GRK3, GRK4, GRK5, 
+        GRK6, GRK7, GSK3A, GSK3B, HASPIN, HGK, HIPK1, HIPK2, HIPK3, HIPK4, HPK1, HRI, HUNK, ICK, IKKA, 
+        IKKB, IKKE, IRAK1, IRAK4, IRE1, IRE2, JNK1, JNK2, JNK3, KHS1, KHS2, KIS, LATS1, LATS2, LKB1, 
+        LOK, LRRK2, MAK, MAP3K15, MAPKAPK2, MAPKAPK3, MAPKAPK5, MARK1, MARK2, MARK3, MARK4, MASTL, 
+        MEK1, MEK2, MEK5, MEKK1, MEKK2, MEKK3, MEKK6, MELK, MINK, MLK1, MLK2, MLK3, MLK4, MNK1, MNK2, 
+        MOK, MOS, MPSK1, MRCKA, MRCKB, MSK1, MSK2, MST1, MST2, MST3, MST4, MTOR, MYLK4, MYO3A, MYO3B, 
+        NDR1, NDR2, NEK1, NEK11, NEK2, NEK3, NEK4, NEK5, NEK6, NEK7, NEK8, NEK9, NIK, NIM1, NLK, NUAK1, 
+        NUAK2, OSR1, P38A, P38B, P38D, P38G, P70S6K, P70S6KB, P90RSK, PAK1, PAK2, PAK3, PAK4, PAK5, 
+        PAK6, PASK, PBK, PDHK1, PDHK4, PDK1, PERK, PHKG1, PHKG2, PIM1, PIM2, PIM3, PINK1, PKACA, PKACB, 
+        PKACG, PKCA, PKCB, PKCD, PKCE, PKCG, PKCH, PKCI, PKCT, PKCZ, PKG1, PKG2, PKN1, PKN2, PKN3, PKR, 
+        PLK1, PLK2, PLK3, PLK4, PRKD1, PRKD2, PRKD3, PRKX, PRP4, PRPK, QIK, QSK, RAF1, RIPK1, RIPK2, 
+        RIPK3, ROCK1, ROCK2, RSK2, RSK3, RSK4, SBK, SGK1, SGK3, SIK, SKMLCK, SLK, SMG1, SMMLCK, SNRK, 
+        SRPK1, SRPK2, SRPK3, SSTK, STK33, STLK3, TAK1, TAO1, TAO2, TAO3, TBK1, TGFBR1, TGFBR2, TLK1, 
+        TLK2, TNIK, TSSK1, TSSK2, TTBK1, TTBK2, TTK, ULK1, ULK2, VRK1, VRK2, WNK1, WNK3, WNK4, YANK2, 
+        YANK3, YSK1, YSK4, ZAK);
         """.format(csv_path)
         
         # Execute the bulk load
@@ -324,7 +347,7 @@ def bulk_load_y_data(connection, driver_type):
                 cursor.execute("DROP TABLE IF EXISTS `Cantley_Kinome_Scores_All_Ys`")
                 connection.commit()
                 # Recreate table
-                create_y_table(cursor)
+                create_y_table(cursor, connection)
             elif choice == '2':
                 logger.info("Truncating table...")
                 cursor.execute("TRUNCATE TABLE `Cantley_Kinome_Scores_All_Ys`")
@@ -340,7 +363,7 @@ def bulk_load_y_data(connection, driver_type):
         except Exception as e:
             logger.info(f"Y kinase scores table doesn't exist yet: {e}")
             # Create the table
-            create_y_table(cursor)
+            create_y_table(cursor, connection)
         
         # Start the bulk load process
         logger.info("Starting Y kinase scores bulk load process...")
@@ -356,13 +379,22 @@ def bulk_load_y_data(connection, driver_type):
         # Prepare the LOAD DATA INFILE statement with proper path formatting
         csv_path = Y_FILE_PATH.replace('\\', '/')
         
+        # Load data, skipping the first column (Unnamed: 0)
         load_query = """
         LOAD DATA LOCAL INFILE '{}'
         INTO TABLE `Cantley_Kinome_Scores_All_Ys`
         FIELDS TERMINATED BY ','
         ENCLOSED BY '"'
         LINES TERMINATED BY '\\n'
-        IGNORE 1 LINES;
+        IGNORE 1 LINES
+        (@dummy, SiteID, Motif, ABL, ACK, ALK, ARG, AXL, BLK, BMPR2_TYR, BRK, BTK, CSFR, CSK, 
+        CTK, DDR1, DDR2, EGFR, EPHA1, EPHA2, EPHA3, EPHA4, EPHA5, EPHA6, EPHA7, EPHA8, EPHB1, 
+        EPHB2, EPHB3, EPHB4, ETK, FAK, FER, FES, FGFR1, FGFR2, FGFR3, FGFR4, FGR, FLT3, FRK, 
+        FYN, HCK, HER2, HER4, IGF1R, INSR, IRR, ITK, JAK1, JAK2, JAK3, KIT, LCK, LIMK1_TYR, 
+        LIMK2_TYR, LTK, LYN, MER, MET, MKK4_TYR, MKK6_TYR, MKK7_TYR, MST1R, MUSK, MYT1_TYR, 
+        NEK10_TYR, PDGFRA, PDGFRB, PDHK1_TYR, PDHK3_TYR, PDHK4_TYR, PINK1_TYR, PYK2, RET, ROS, 
+        SRC, SRMS, SYK, TEC, TESK1_TYR, TIE2, TNK1, TNNI3K_TYR, TRKA, TRKB, TRKC, TXK, TYK2, 
+        TYRO3, VEGFR1, VEGFR2, VEGFR3, WEE1_TYR, YES, ZAP70);
         """.format(csv_path)
         
         # Execute the bulk load
@@ -475,13 +507,35 @@ def try_direct_mysql_command_st():
             -- Disable keys for faster loading
             ALTER TABLE `Cantley_Kinome_Scores_All_STs` DISABLE KEYS;
             
-            -- Load data
+            -- Load data, skipping the first column (Unnamed: 0)
             LOAD DATA LOCAL INFILE '{}' 
             INTO TABLE `Cantley_Kinome_Scores_All_STs`
             FIELDS TERMINATED BY ','
             ENCLOSED BY '"'
             LINES TERMINATED BY '\\n'
-            IGNORE 1 LINES;
+            IGNORE 1 LINES
+            (@dummy, SiteID, Motif, AAK1, ACVR2A, ACVR2B, AKT1, AKT2, AKT3, ALK2, ALK4, ALPHAK3, AMPKA1, 
+            AMPKA2, ANKRD3, ASK1, ATM, ATR, AURA, AURB, AURC, BCKDK, BIKE, BMPR1A, BMPR1B, BMPR2, BRAF, 
+            BRSK1, BRSK2, BUB1, CAMK1A, CAMK1B, CAMK1D, CAMK1G, CAMK2A, CAMK2B, CAMK2D, CAMK2G, CAMK4, 
+            CAMKK1, CAMKK2, CAMLCK, CDC7, CDK1, CDK10, CDK12, CDK13, CDK14, CDK16, CDK17, CDK18, CDK19, 
+            CDK2, CDK3, CDK4, CDK5, CDK6, CDK7, CDK8, CDK9, CDKL1, CDKL5, CHAK1, CHAK2, CHK1, CHK2, CK1A, 
+            CK1A2, CK1D, CK1E, CK1G1, CK1G2, CK1G3, CK2A1, CK2A2, CLK1, CLK2, CLK3, CLK4, COT, CRIK, DAPK1, 
+            DAPK2, DAPK3, DCAMKL1, DCAMKL2, DLK, DMPK1, DNAPK, DRAK1, DSTYK, DYRK1A, DYRK1B, DYRK2, DYRK3, 
+            DYRK4, EEF2K, ERK1, ERK2, ERK5, ERK7, FAM20C, GAK, GCK, GCN2, GRK1, GRK2, GRK3, GRK4, GRK5, 
+            GRK6, GRK7, GSK3A, GSK3B, HASPIN, HGK, HIPK1, HIPK2, HIPK3, HIPK4, HPK1, HRI, HUNK, ICK, IKKA, 
+            IKKB, IKKE, IRAK1, IRAK4, IRE1, IRE2, JNK1, JNK2, JNK3, KHS1, KHS2, KIS, LATS1, LATS2, LKB1, 
+            LOK, LRRK2, MAK, MAP3K15, MAPKAPK2, MAPKAPK3, MAPKAPK5, MARK1, MARK2, MARK3, MARK4, MASTL, 
+            MEK1, MEK2, MEK5, MEKK1, MEKK2, MEKK3, MEKK6, MELK, MINK, MLK1, MLK2, MLK3, MLK4, MNK1, MNK2, 
+            MOK, MOS, MPSK1, MRCKA, MRCKB, MSK1, MSK2, MST1, MST2, MST3, MST4, MTOR, MYLK4, MYO3A, MYO3B, 
+            NDR1, NDR2, NEK1, NEK11, NEK2, NEK3, NEK4, NEK5, NEK6, NEK7, NEK8, NEK9, NIK, NIM1, NLK, NUAK1, 
+            NUAK2, OSR1, P38A, P38B, P38D, P38G, P70S6K, P70S6KB, P90RSK, PAK1, PAK2, PAK3, PAK4, PAK5, 
+            PAK6, PASK, PBK, PDHK1, PDHK4, PDK1, PERK, PHKG1, PHKG2, PIM1, PIM2, PIM3, PINK1, PKACA, PKACB, 
+            PKACG, PKCA, PKCB, PKCD, PKCE, PKCG, PKCH, PKCI, PKCT, PKCZ, PKG1, PKG2, PKN1, PKN2, PKN3, PKR, 
+            PLK1, PLK2, PLK3, PLK4, PRKD1, PRKD2, PRKD3, PRKX, PRP4, PRPK, QIK, QSK, RAF1, RIPK1, RIPK2, 
+            RIPK3, ROCK1, ROCK2, RSK2, RSK3, RSK4, SBK, SGK1, SGK3, SIK, SKMLCK, SLK, SMG1, SMMLCK, SNRK, 
+            SRPK1, SRPK2, SRPK3, SSTK, STK33, STLK3, TAK1, TAO1, TAO2, TAO3, TBK1, TGFBR1, TGFBR2, TLK1, 
+            TLK2, TNIK, TSSK1, TSSK2, TTBK1, TTBK2, TTK, ULK1, ULK2, VRK1, VRK2, WNK1, WNK3, WNK4, YANK2, 
+            YANK3, YSK1, YSK4, ZAK);
             
             -- Re-enable keys
             ALTER TABLE `Cantley_Kinome_Scores_All_STs` ENABLE KEYS;
@@ -575,13 +629,21 @@ def try_direct_mysql_command_y():
             -- Disable keys for faster loading
             ALTER TABLE `Cantley_Kinome_Scores_All_Ys` DISABLE KEYS;
             
-            -- Load data
+            -- Load data, skipping the first column (Unnamed: 0)
             LOAD DATA LOCAL INFILE '{}' 
             INTO TABLE `Cantley_Kinome_Scores_All_Ys`
             FIELDS TERMINATED BY ','
             ENCLOSED BY '"'
             LINES TERMINATED BY '\\n'
-            IGNORE 1 LINES;
+            IGNORE 1 LINES
+            (@dummy, SiteID, Motif, ABL, ACK, ALK, ARG, AXL, BLK, BMPR2_TYR, BRK, BTK, CSFR, CSK, 
+            CTK, DDR1, DDR2, EGFR, EPHA1, EPHA2, EPHA3, EPHA4, EPHA5, EPHA6, EPHA7, EPHA8, EPHB1, 
+            EPHB2, EPHB3, EPHB4, ETK, FAK, FER, FES, FGFR1, FGFR2, FGFR3, FGFR4, FGR, FLT3, FRK, 
+            FYN, HCK, HER2, HER4, IGF1R, INSR, IRR, ITK, JAK1, JAK2, JAK3, KIT, LCK, LIMK1_TYR, 
+            LIMK2_TYR, LTK, LYN, MER, MET, MKK4_TYR, MKK6_TYR, MKK7_TYR, MST1R, MUSK, MYT1_TYR, 
+            NEK10_TYR, PDGFRA, PDGFRB, PDHK1_TYR, PDHK3_TYR, PDHK4_TYR, PINK1_TYR, PYK2, RET, ROS, 
+            SRC, SRMS, SYK, TEC, TESK1_TYR, TIE2, TNK1, TNNI3K_TYR, TRKA, TRKB, TRKC, TXK, TYK2, 
+            TYRO3, VEGFR1, VEGFR2, VEGFR3, WEE1_TYR, YES, ZAP70);
             
             -- Re-enable keys
             ALTER TABLE `Cantley_Kinome_Scores_All_Ys` ENABLE KEYS;
@@ -616,8 +678,6 @@ def try_direct_mysql_command_y():
             "--local-infile=1",
             f"--execute=source {sql_file_path}"
         ]
-        
-        # Execute command
         logger.info(f"Executing: {' '.join(cmd)}")
         result = subprocess.run(cmd, capture_output=True, text=True)
         
@@ -631,6 +691,7 @@ def try_direct_mysql_command_y():
     except Exception as e:
         logger.error(f"Error executing MySQL command for Y kinase scores: {e}")
         return False
+    
 
 def use_pandas_fallback_st():
     """Use pandas as a fallback method to load S/T kinase scores data."""
@@ -649,9 +710,16 @@ def use_pandas_fallback_st():
         password = urllib.parse.quote_plus(DB_PASS)
         engine = create_engine(f"mysql+pymysql://{DB_USER}:{password}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
         
-        # Load data from CSV
+        # Load data from CSV and drop the unwanted column
         logger.info(f"Loading S/T kinase scores CSV: {ST_FILE_PATH}")
         df = pd.read_csv(ST_FILE_PATH)
+        logger.info(f"CSV columns: {df.columns.tolist()[:10]}...")
+        
+        # Drop the unwanted column if it exists
+        if 'Unnamed: 0' in df.columns:
+            logger.info("Removing 'Unnamed: 0' row number column")
+            df = df.drop(columns=['Unnamed: 0'])
+        
         logger.info(f"Loaded {len(df)} rows from CSV")
         
         # Create table if it doesn't exist
@@ -718,7 +786,7 @@ def use_pandas_fallback_st():
                 'Cantley_Kinome_Scores_All_STs',
                 engine,
                 if_exists=if_exists,
-                index=False,
+                index=False,  # Crucial to prevent adding an index column
                 chunksize=100  # Smaller sub-chunks for each SQLAlchemy transaction
             )
         
@@ -757,9 +825,16 @@ def use_pandas_fallback_y():
         password = urllib.parse.quote_plus(DB_PASS)
         engine = create_engine(f"mysql+pymysql://{DB_USER}:{password}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
         
-        # Load data from CSV
+        # Load data from CSV and drop the unwanted column
         logger.info(f"Loading Y kinase scores CSV: {Y_FILE_PATH}")
         df = pd.read_csv(Y_FILE_PATH)
+        logger.info(f"CSV columns: {df.columns.tolist()[:10]}...")
+        
+        # Drop the unwanted column if it exists
+        if 'Unnamed: 0' in df.columns:
+            logger.info("Removing 'Unnamed: 0' row number column")
+            df = df.drop(columns=['Unnamed: 0'])
+        
         logger.info(f"Loaded {len(df)} rows from CSV")
         
         # Create table if it doesn't exist
@@ -826,7 +901,7 @@ def use_pandas_fallback_y():
                 'Cantley_Kinome_Scores_All_Ys',
                 engine,
                 if_exists=if_exists,
-                index=False,
+                index=False,  # Crucial to prevent adding an index column
                 chunksize=100  # Smaller sub-chunks for each SQLAlchemy transaction
             )
         
@@ -847,6 +922,110 @@ def use_pandas_fallback_y():
     except Exception as e:
         logger.error(f"Error in pandas fallback for Y kinase scores: {e}")
         return False
+
+def verify_data_load(connection):
+    """Verify that data was loaded correctly by reading samples from the tables."""
+    try:
+        cursor = connection.cursor()
+        
+        # Check S/T kinase scores table
+        try:
+            # Get column names
+            cursor.execute("SHOW COLUMNS FROM `Cantley_Kinome_Scores_All_STs`")
+            st_columns = [row[0] for row in cursor.fetchall()]
+            logger.info(f"S/T kinase scores table has {len(st_columns)} columns")
+            
+            # Check if the 'Unnamed: 0' column is present (it shouldn't be)
+            if 'Unnamed: 0' in st_columns:
+                logger.warning("WARNING: 'Unnamed: 0' column found in S/T table!")
+            
+            # Get row count
+            cursor.execute("SELECT COUNT(*) FROM `Cantley_Kinome_Scores_All_STs`")
+            st_count = cursor.fetchone()[0]
+            logger.info(f"S/T kinase scores table has {st_count} rows")
+            
+            # Read a few sample rows
+            cursor.execute("SELECT SiteID, Motif, AKT1, CDK1, ERK1 FROM `Cantley_Kinome_Scores_All_STs` LIMIT 5")
+            st_samples = cursor.fetchall()
+            logger.info("Sample S/T kinase scores data:")
+            for sample in st_samples:
+                logger.info(f"  SiteID: {sample[0]}, Motif: {sample[1]}, AKT1: {sample[2]}, CDK1: {sample[3]}, ERK1: {sample[4]}")
+            
+            # Get top kinase for a random site
+            cursor.execute("""
+            SELECT SiteID, Motif, 
+                   GREATEST(AAK1, ACVR2A, AKT1, CDK1, ERK1, GSK3A, GSK3B, P38A, PKACA) AS max_score,
+                   CASE 
+                       WHEN AAK1 = GREATEST(AAK1, ACVR2A, AKT1, CDK1, ERK1, GSK3A, GSK3B, P38A, PKACA) THEN 'AAK1'
+                       WHEN ACVR2A = GREATEST(AAK1, ACVR2A, AKT1, CDK1, ERK1, GSK3A, GSK3B, P38A, PKACA) THEN 'ACVR2A'
+                       WHEN AKT1 = GREATEST(AAK1, ACVR2A, AKT1, CDK1, ERK1, GSK3A, GSK3B, P38A, PKACA) THEN 'AKT1'
+                       WHEN CDK1 = GREATEST(AAK1, ACVR2A, AKT1, CDK1, ERK1, GSK3A, GSK3B, P38A, PKACA) THEN 'CDK1'
+                       WHEN ERK1 = GREATEST(AAK1, ACVR2A, AKT1, CDK1, ERK1, GSK3A, GSK3B, P38A, PKACA) THEN 'ERK1'
+                       WHEN GSK3A = GREATEST(AAK1, ACVR2A, AKT1, CDK1, ERK1, GSK3A, GSK3B, P38A, PKACA) THEN 'GSK3A'
+                       WHEN GSK3B = GREATEST(AAK1, ACVR2A, AKT1, CDK1, ERK1, GSK3A, GSK3B, P38A, PKACA) THEN 'GSK3B'
+                       WHEN P38A = GREATEST(AAK1, ACVR2A, AKT1, CDK1, ERK1, GSK3A, GSK3B, P38A, PKACA) THEN 'P38A'
+                       WHEN PKACA = GREATEST(AAK1, ACVR2A, AKT1, CDK1, ERK1, GSK3A, GSK3B, P38A, PKACA) THEN 'PKACA'
+                   END AS top_kinase
+            FROM `Cantley_Kinome_Scores_All_STs`
+            ORDER BY RAND()
+            LIMIT 3
+            """)
+            st_top_kinases = cursor.fetchall()
+            logger.info("Top kinases for random S/T sites:")
+            for site in st_top_kinases:
+                logger.info(f"  SiteID: {site[0]}, Motif: {site[1]}, Top Kinase: {site[3]} (Score: {site[2]})")
+                
+        except Exception as e:
+            logger.warning(f"Error verifying S/T kinase scores table: {e}")
+        
+        # Check Y kinase scores table
+        try:
+            # Get column names
+            cursor.execute("SHOW COLUMNS FROM `Cantley_Kinome_Scores_All_Ys`")
+            y_columns = [row[0] for row in cursor.fetchall()]
+            logger.info(f"Y kinase scores table has {len(y_columns)} columns")
+            
+            # Check if the 'Unnamed: 0' column is present (it shouldn't be)
+            if 'Unnamed: 0' in y_columns:
+                logger.warning("WARNING: 'Unnamed: 0' column found in Y table!")
+            
+            # Get row count
+            cursor.execute("SELECT COUNT(*) FROM `Cantley_Kinome_Scores_All_Ys`")
+            y_count = cursor.fetchone()[0]
+            logger.info(f"Y kinase scores table has {y_count} rows")
+            
+            # Read a few sample rows
+            cursor.execute("SELECT SiteID, Motif, SRC, EGFR, JAK1 FROM `Cantley_Kinome_Scores_All_Ys` LIMIT 5")
+            y_samples = cursor.fetchall()
+            logger.info("Sample Y kinase scores data:")
+            for sample in y_samples:
+                logger.info(f"  SiteID: {sample[0]}, Motif: {sample[1]}, SRC: {sample[2]}, EGFR: {sample[3]}, JAK1: {sample[4]}")
+            
+            # Get top kinase for a random site
+            cursor.execute("""
+            SELECT SiteID, Motif, 
+                   GREATEST(SRC, EGFR, JAK1, ABL, LCK) AS max_score,
+                   CASE 
+                       WHEN SRC = GREATEST(SRC, EGFR, JAK1, ABL, LCK) THEN 'SRC'
+                       WHEN EGFR = GREATEST(SRC, EGFR, JAK1, ABL, LCK) THEN 'EGFR'
+                       WHEN JAK1 = GREATEST(SRC, EGFR, JAK1, ABL, LCK) THEN 'JAK1'
+                       WHEN ABL = GREATEST(SRC, EGFR, JAK1, ABL, LCK) THEN 'ABL'
+                       WHEN LCK = GREATEST(SRC, EGFR, JAK1, ABL, LCK) THEN 'LCK'
+                   END AS top_kinase
+            FROM `Cantley_Kinome_Scores_All_Ys`
+            ORDER BY RAND()
+            LIMIT 3
+            """)
+            y_top_kinases = cursor.fetchall()
+            logger.info("Top kinases for random Y sites:")
+            for site in y_top_kinases:
+                logger.info(f"  SiteID: {site[0]}, Motif: {site[1]}, Top Kinase: {site[3]} (Score: {site[2]})")
+                
+        except Exception as e:
+            logger.warning(f"Error verifying Y kinase scores table: {e}")
+            
+    except Exception as e:
+        logger.error(f"Error during data verification: {e}")
 
 def main():
     """Main function to execute the bulk load process."""
@@ -889,6 +1068,11 @@ def main():
             logger.info("Y kinase scores loaded successfully using Python")
         else:
             logger.warning("Failed to load Y kinase scores using Python")
+        
+        # Add verification step - read some data from the tables
+        if st_loaded or y_loaded:
+            logger.info("Verifying data in tables...")
+            verify_data_load(connection)
         
         connection.close()
     else:
@@ -933,6 +1117,14 @@ def main():
             logger.info("Y kinase scores loaded successfully using pandas fallback")
         else:
             logger.error("All methods failed to load Y kinase scores")
+    
+    # Final verification after all methods have been tried
+    if st_loaded or y_loaded:
+        logger.info("Performing final data verification...")
+        final_conn, final_driver_type = try_connect_mysql()
+        if final_conn:
+            verify_data_load(final_conn)
+            final_conn.close()
     
     return st_loaded and y_loaded
 
