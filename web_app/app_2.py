@@ -1258,9 +1258,9 @@ def phosphosite_analysis():
             )
             
             # Create kinase analysis for the protein's phosphosites
+            # Create kinase analysis for the protein's phosphosites
             if results['phosphosites'] and (results['structural_matches'] or results['sequence_matches']):
                 try:
-                    print("RUNNING KINASE REPORT")
                     # Generate comprehensive kinase report
                     kinase_report = create_protein_kinase_report(
                         results['protein_info']['uniprot_id'],
@@ -1272,8 +1272,7 @@ def phosphosite_analysis():
                         include_family_analysis=True,
                         top_n_kinases=10
                     )
-                    print("KINASE REPORT")
-                    print(kinase_report)
+                    
                     # Generate HTML report for display
                     kinase_html = get_html_protein_kinase_report(kinase_report)
                     
@@ -1282,39 +1281,47 @@ def phosphosite_analysis():
                     results['kinase_html'] = kinase_html
                     
                     # Also generate a standalone kinase heatmap for the top 10 sites
-                    try:
-                        kinase_heatmap = get_proteins_kinase_heatmap(
-                            results['protein_info']['uniprot_id'],
-                            results['phosphosites'][:10],  # Limit to top 10 sites for performance
-                            structural_matches=results['structural_matches'],
-                            sequence_matches=results['sequence_matches'],
-                            match_type="structural"  # Use structural matches for the heatmap
-                        )
-                        results['kinase_heatmap'] = kinase_heatmap
-                    except Exception as heatmap_err:
-                        logger.error(f"Error generating kinase heatmap: {heatmap_err}")
-                        results['kinase_heatmap'] = f"<div class='alert alert-warning'>Error generating kinase heatmap: {str(heatmap_err)}</div>"
-                    
-                except Exception as kinase_err:
-                    logger.error(f"Error generating kinase analysis: {kinase_err}")
-                    import traceback
-                    logger.error(traceback.format_exc())
-                    results['kinase_html'] = f"<div class='alert alert-warning'>Error generating kinase analysis: {str(kinase_err)}</div>"
+                    kinase_heatmap = get_proteins_kinase_heatmap(
+                        results['protein_info']['uniprot_id'],
+                        results['phosphosites'][:10],  # Limit to top 10 sites for performance
+                        structural_matches=results['structural_matches'],
+                        sequence_matches=results['sequence_matches'],
+                        match_type="structural"  # Use structural matches for the heatmap
+                    )
+                    results['kinase_heatmap'] = kinase_heatmap
+                except Exception as e:
+                    logger.error(f"Error generating kinase analysis: {e}")
+                    results['kinase_html'] = f"<div class='alert alert-warning'>Error generating kinase analysis: {str(e)}</div>"
             else:
                 results['kinase_html'] = "<div class='alert alert-info'>No phosphosite data available for kinase analysis.</div>"
 
+            from itertools import islice
+            def pretty_print_first_kvp(dictionary, label, limit=5):
+                print(f"\n{label}")
+                for k, v in islice(dictionary.items(), limit):
+                    print(f"Key: {k}")
+                    if isinstance(v, list):
+                        print("Value (first item in list):")
+                        print(json.dumps(v[0], indent=2))  # only show first item for brevity
+                    else:
+                        print("Value:")
+                        print(json.dumps(v, indent=2))
+                    print("-" * 40)
 
+            # Usage
+            pretty_print_first_kvp(results['structural_matches'], "STRUCTURAL_MATCH DATA")
+            pretty_print_first_kvp(results['sequence_matches'], "SEQUENCE_MATCH DATA")
             return render_template('phosphosite.html', 
-                                protein_info=results['protein_info'],
-                                phosphosites=results['phosphosites'],
-                                phosphosites_html=results.get('phosphosites_html'),
-                                structural_matches=results['structural_matches'],
-                                sequence_matches=results.get('sequence_matches'),
-                                network_visualization=network_visualization,
-                                sequence_network_visualization=sequence_network_visualization,
-                                kinase_html=results.get('kinase_html'),  # Add this
-                                kinase_heatmap=results.get('kinase_heatmap'),  # Add this
-                                error=results.get('error'))
+                      protein_info=results['protein_info'],
+                      phosphosites=results['phosphosites'],
+                      phosphosites_html=results.get('phosphosites_html'),
+                      structural_matches=results['structural_matches'],
+                      sequence_matches=results.get('sequence_matches'),
+                      network_visualization=network_visualization,
+                      sequence_network_visualization=sequence_network_visualization,
+                      kinase_html=results.get('kinase_html'),  # Add this
+                      kinase_heatmap=results.get('kinase_heatmap'),  # Add this
+                      error=results.get('error'))
                 
         except Exception as e:
             print(f"Error in phosphosite analysis: {e}")
