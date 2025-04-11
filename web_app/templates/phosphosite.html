@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Phosphosite Structural Analysis - Protein Explorer</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Add Plotly.js in head section -->
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
     <style>
         .phosphosite-table {
             font-size: 0.9rem;
@@ -214,22 +216,65 @@
             </div>
             {% endif %}
 
-
-            <!-- Phosphosite Visualization -->
-            <!-- Kinase Analysis Visualizations -->
-            {% if kinase_heatmap %}
-            <div class="kinase-visualization-wrapper">
-                <h2 class="mt-5 mb-3">Kinase Prediction Analysis</h2>
-                {{ kinase_heatmap|safe }}
+            <!-- Kinase Analysis Section -->
+            {% if phosphosites %}
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Kinase Analysis</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Tabs for different kinase analysis views -->
+                    <ul class="nav nav-tabs mb-3" id="kinaseAnalysisTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" 
+                                    data-bs-target="#overview" type="button" role="tab">
+                                Overview
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="site-specific-tab" data-bs-toggle="tab" 
+                                    data-bs-target="#site-specific" type="button" role="tab">
+                                Site-Specific Analysis
+                            </button>
+                        </li>
+                    </ul>
+                    
+                    <!-- Tab content -->
+                    <div class="tab-content" id="kinaseAnalysisTabContent">
+                        <!-- Overview Tab -->
+                        <div class="tab-pane fade show active" id="overview" role="tabpanel">
+                            {% if kinase_html %}
+                                {{ kinase_html|safe }}
+                            {% else %}
+                                <div class="alert alert-info">
+                                    No kinase analysis data available for this protein.
+                                </div>
+                            {% endif %}
+                        </div>
+                        
+                        <!-- Site-Specific Analysis Tab -->
+                        <div class="tab-pane fade" id="site-specific" role="tabpanel">
+                            <!-- Site selector -->
+                            {% if site_selector_html %}
+                                {{ site_selector_html|safe }}
+                            {% endif %}
+                            
+                            <!-- Site analysis container -->
+                            {% if site_analysis_html %}
+                                {{ site_analysis_html|safe }}
+                            {% else %}
+                                <div id="site-analysis">
+                                    <div class="alert alert-info">
+                                        Select a phosphosite from the dropdown above to view kinase analysis.
+                                    </div>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
             </div>
             {% endif %}
-
-            <!-- Detailed Kinase Report -->
-            {% if kinase_html %}
-            <div class="kinase-report-wrapper">
-                {{ kinase_html|safe }}
-            </div>
-            {% endif %}
+            
             <!-- Phosphosite Table -->
             {% if phosphosites_html %}
                 {{ phosphosites_html|safe }}
@@ -407,7 +452,6 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.0.1/dist/chartjs-plugin-annotation.min.js"></script>
-    
     <!-- Load the new sequence network visualization script -->
     <script src="{{ url_for('static', filename='js/protein-sequence-network-visualization.js') }}"></script>
     
@@ -488,6 +532,7 @@
         console.log('D3.js version:', typeof d3 !== 'undefined' ? 'Loaded' : 'Not loaded');
         console.log('Bootstrap version:', typeof bootstrap !== 'undefined' ? 'Loaded' : 'Not loaded');
         console.log('Chart.js version:', typeof Chart !== 'undefined' ? 'Loaded' : 'Not loaded');
+        console.log('Plotly.js version:', typeof Plotly !== 'undefined' ? 'Loaded' : 'Not loaded');
         
         // Check network containers
         console.log('Structural network container exists:', !!document.getElementById('network-container'));
@@ -504,6 +549,94 @@
     <!-- Debugging Script for Structural Network -->
     <script>
     console.log('Structural network script status:', typeof setupPhosphositeStructuralNetwork !== 'undefined' ? 'Loaded' : 'Not loaded');
+    </script>
+
+    <!-- Kinase Analysis JavaScript - CORRECTED WITH SCRIPT EXECUTION HANDLING -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if site selector form exists
+            const siteSelector = document.getElementById('site-selector-form');
+            console.log('Site selector form found:', !!siteSelector);
+            
+            if (siteSelector) {
+                siteSelector.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    const selectedSite = document.getElementById('site-selector').value;
+                    console.log('Selected site:', selectedSite);
+                    
+                    if (selectedSite) {
+                        // Show loading indicator
+                        document.getElementById('site-analysis').innerHTML = 
+                            '<div class="text-center"><div class="spinner-border"></div><p>Loading analysis...</p></div>';
+                        
+                        // Fetch site analysis data
+                        console.log('Fetching site analysis data for:', selectedSite);
+                        fetch(`/api/site_kinase_analysis/${selectedSite}`)
+                            .then(response => {
+                                console.log('Response status:', response.status);
+                                return response.json();
+                            })
+                            .then(data => {
+                                console.log('Received data:', data);
+                                
+                                if (data.error) {
+                                    console.error('Error in response:', data.error);
+                                    document.getElementById('site-analysis').innerHTML = 
+                                        `<div class="alert alert-danger">${data.error}</div>`;
+                                    if (data.traceback) {
+                                        console.error('Traceback:', data.traceback);
+                                    }
+                                } else {
+                                    console.log('HTML length:', data.html ? data.html.length : 0);
+                                    
+                                    // Update the site analysis container with the received HTML
+                                    document.getElementById('site-analysis').innerHTML = data.html;
+                                    
+                                    // Execute scripts in the loaded HTML
+                                    executeScripts(document.getElementById('site-analysis'));
+                                    
+                                    // Initialize any Bootstrap tabs
+                                    const tabs = document.querySelectorAll('#site-analysis [data-bs-toggle="tab"]');
+                                    if (tabs.length > 0 && typeof bootstrap !== 'undefined') {
+                                        console.log(`Initializing ${tabs.length} tabs`);
+                                        tabs.forEach(tab => new bootstrap.Tab(tab));
+                                    }
+                                }
+                            })
+                            .catch(error => {
+                                console.error('Fetch error:', error);
+                                document.getElementById('site-analysis').innerHTML = 
+                                    `<div class="alert alert-danger">Error loading analysis: ${error.message}</div>`;
+                            });
+                    }
+                });
+            }
+            
+            // Function to execute scripts in dynamically loaded HTML
+            function executeScripts(element) {
+                // Get all script elements
+                const scripts = element.querySelectorAll('script');
+                console.log(`Found ${scripts.length} scripts to execute`);
+                
+                scripts.forEach((oldScript, index) => {
+                    // Create a new script element
+                    const newScript = document.createElement('script');
+                    
+                    // Copy all attributes from old script to new script
+                    Array.from(oldScript.attributes).forEach(attr => {
+                        newScript.setAttribute(attr.name, attr.value);
+                    });
+                    
+                    // Set the script content
+                    newScript.textContent = oldScript.textContent;
+                    
+                    // Replace old script with new script
+                    oldScript.parentNode.replaceChild(newScript, oldScript);
+                    
+                    console.log(`Executed script ${index + 1}/${scripts.length}`);
+                });
+            }
+        });
     </script>
 </body>
 </html>

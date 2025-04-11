@@ -7,7 +7,7 @@ the same functionality and output as the original application.
 
 
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 import os
 import sys
 import logging
@@ -21,6 +21,12 @@ import json
 from typing import Dict, List, Optional
 import shutil
 import math
+import time
+
+
+
+
+
 
 
 
@@ -89,10 +95,16 @@ from protein_explorer.visualization.protein_sequence_phosphosite_network import 
 
 from protein_explorer.analysis.Cantley_Kinase_Scorer import (
     process_matches_for_kinase_scoring,
+    create_heatmap_visualization,
+    create_top_kinases_visualization,
     create_protein_kinase_report,
     get_html_protein_kinase_report,
-    get_proteins_kinase_heatmap
+    create_site_selector_ui,
+    process_site_specific_matches,
+    generate_site_analysis_visualizations
 )
+
+MATCH_CACHE = {}
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -137,6 +149,11 @@ else:
 ensure_cache_directory()
 
 app = Flask(__name__)
+# Add this after creating your Flask app (where you have "app = Flask(__name__)")
+app.secret_key = os.environ.get('SECRET_KEY', 'dev_key_change_in_production')  # More secure to get from environment
+
+
+
 
 @app.route('/')
 def index():
@@ -586,6 +603,105 @@ def api_phosphosites(uniprot_id):
     except Exception as e:
         logger.error(f"Error in API endpoint: {e}")
         return jsonify({'error': str(e)}), 400
+    
+@app.route('/api/site_kinase_analysis/<site_name>')
+def site_kinase_analysis(site_name):
+    """API endpoint for site-specific kinase analysis with enhanced debugging."""
+    try:
+        # Get protein ID from session or query parameter
+        uniprot_id = request.args.get('uniprot_id') or session.get('current_protein')
+        
+        if not uniprot_id:
+            logger.error("No protein ID specified in request or session")
+            return jsonify({'error': 'No protein specified'}), 400
+            
+        # Generate site ID
+        residue_number = site_name.lstrip('STY')
+        site_id = f"{uniprot_id}_{residue_number}"
+        
+        logger.info(f"Processing site_kinase_analysis for {site_id}")
+        
+        # Get matches from cache instead of session
+        cache_data = MATCH_CACHE.get(uniprot_id, {})
+        if not cache_data:
+            logger.error(f"No cache data found for protein {uniprot_id}")
+            return jsonify({'error': f'No data found for protein {uniprot_id}'}), 404
+            
+        structural_matches = cache_data.get('structural_matches', {}).get(site_name, [])
+        sequence_matches = cache_data.get('sequence_matches', {}).get(site_name, [])
+        
+        logger.info(f"Found {len(structural_matches)} structural matches and {len(sequence_matches)} sequence matches")
+        
+        # Debug the first few matches to verify structure
+        if structural_matches:
+            logger.debug(f"First structural match sample: {structural_matches[0]}")
+        if sequence_matches:
+            logger.debug(f"First sequence match sample: {sequence_matches[0]}")
+        
+        # Import necessary functions from Cantley_Kinase_Scorer
+        from protein_explorer.analysis.Cantley_Kinase_Scorer import (
+            process_site_specific_matches,
+            generate_site_analysis_visualizations
+        )
+        
+        # Process matches for this site
+        logger.info("Processing matches for kinase scoring")
+        site_data = process_site_specific_matches(site_name, structural_matches, sequence_matches)
+        
+        # Log site data structure to verify it's correctly formed
+        logger.info(f"Site data keys: {site_data.keys()}")
+        logger.info(f"Structural processed: {site_data.get('structural', {}).get('processed', 0)}")
+        logger.info(f"Sequence processed: {site_data.get('sequence', {}).get('processed', 0)}")
+        
+        # Generate visualizations
+        logger.info("Generating site analysis visualizations")
+        html = generate_site_analysis_visualizations(site_data, site_id, uniprot_id)
+        
+        # Log HTML length as a sanity check
+        logger.info(f"Generated HTML length: {len(html)}")
+        
+        # Add debugging info to the response
+        debug_info = {
+            'structural_matches_count': len(structural_matches),
+            'sequence_matches_count': len(sequence_matches),
+            'structural_processed': site_data.get('structural', {}).get('processed', 0),
+            'sequence_processed': site_data.get('sequence', {}).get('processed', 0),
+            'html_length': len(html)
+        }
+        
+        # Return data and HTML
+        return jsonify({
+            'site_name': site_name,
+            'site_id': site_id,
+            'uniprot_id': uniprot_id,
+            'structural_matches': len(structural_matches),
+            'sequence_matches': len(sequence_matches),
+            'debug': debug_info,
+            'html': html
+        })
+    except Exception as e:
+        logger.error(f"Error in site kinase analysis: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'error': str(e), 
+            'traceback': traceback.format_exc()
+        }), 500
+
+# Cache maintenance function to prevent memory issues
+def cleanup_match_cache(max_age=3600):  # Default: remove entries older than 1 hour
+    """Clean up old entries from the match cache to prevent memory issues."""
+    current_time = time.time()
+    keys_to_remove = []
+    
+    for key, data in MATCH_CACHE.items():
+        if current_time - data.get('timestamp', 0) > max_age:
+            keys_to_remove.append(key)
+    
+    for key in keys_to_remove:
+        del MATCH_CACHE[key]
+        
+    logger.info(f"Cleaned up {len(keys_to_remove)} old entries from match cache")
 
 @app.route('/api/structure/<uniprot_id>', methods=['GET'])
 def api_structure(uniprot_id):
@@ -629,6 +745,16 @@ def phosphosite_analysis():
     # Import enhanced table function
     from protein_explorer.analysis.enhanced_table import enhance_phosphosite_table
     from protein_explorer.analysis.motif_blosum_scorer import find_blosum_matches_batch_optimized
+    
+    # Import Cantley Kinase Scorer functions
+    from protein_explorer.analysis.Cantley_Kinase_Scorer import (
+        process_matches_for_kinase_scoring,
+        create_protein_kinase_report,
+        get_html_protein_kinase_report,
+        create_site_selector_ui,
+        process_site_specific_matches,
+        generate_site_analysis_visualizations
+    )
     
     # Initialize variables
     results = None
@@ -815,39 +941,29 @@ def phosphosite_analysis():
                                     if target_id and target_id in target_annotations:
                                         annotation = target_annotations[target_id]
                                         
-                                        # Replace with actual structural annotation data
-                                        enhanced_match['site_plddt'] = annotation.get('pLDDT', enhanced_match.get('site_plddt', 0))
-                                        enhanced_match['motif'] = annotation.get('Motif', enhanced_match.get('motif', '')).upper()
-                                        enhanced_match['nearby_count'] = annotation.get('NeighborCount', enhanced_match.get('nearby_count', 0))
-                                        enhanced_match['surface_accessibility'] = annotation.get('HydroxylExposure', 0) * 100
+                                        # Add ALL fields from structural annotations
+                                        for key, value in annotation.items():
+                                            # Skip keys that would overwrite existing critical data
+                                            if key not in ['target_id', 'target_uniprot', 'target_site']:
+                                                enhanced_match[key] = value
                                         
-                                        # Add other valuable structural data
-                                        enhanced_match['secondary_structure'] = annotation.get('SecondaryStructure', '')
-                                        enhanced_match['hydrophobic_ratio'] = annotation.get('hydrophobic_ratio', 0)
-                                        enhanced_match['negative_count'] = annotation.get('negative_count', 0)
-                                        enhanced_match['positive_count'] = annotation.get('positive_count', 0)
+                                        # Ensure motif is uppercase if present
+                                        if 'Motif' in enhanced_match and enhanced_match['Motif']:
+                                            enhanced_match['motif'] = str(enhanced_match['Motif']).upper()
                                     
-                                    # Add kinase and known status from supplementary data
+                                    # Add ALL fields from supplementary data
                                     if target_id and target_id in target_supp_data:
                                         supp = target_supp_data[target_id]
                                         
-                                        # Add known phosphosite status
-                                        enhanced_match['is_known_phosphosite'] = supp.get('is_known_phosphosite', 0)
-                                        
-                                        # Extract kinase information
-                                        known_kinases = []
-                                        for i in range(1, 6):
-                                            kinase_field = f"KINASE_{i}"
-                                            if kinase_field in supp and supp[kinase_field] and supp[kinase_field] != 'unlabeled':
-                                                known_kinases.append(supp[kinase_field])
-                                        
-                                        if known_kinases:
-                                            enhanced_match['known_kinase'] = ', '.join(known_kinases)
+                                        for key, value in supp.items():
+                                            # Skip keys that would overwrite existing critical data
+                                            if key not in ['target_id', 'target_uniprot', 'target_site'] and value is not None:
+                                                enhanced_match[key] = value
                                     
                                     enhanced_matches.append(enhanced_match)
                                 
                                 structural_matches[site['site']] = enhanced_matches
-                    
+
                     results['structural_matches'] = structural_matches
 
                 # Add these two blocks of code in the appropriate places
@@ -869,46 +985,22 @@ def phosphosite_analysis():
                             if 'target_id' in match:
                                 target_id = match['target_id']
                                 
-                                # Create a new phosphosite object for this target
+                                # Create a new phosphosite object with basic information
                                 target_site = {
                                     'site': match.get('target_site', ''),
                                     'site_id': target_id,
                                     'uniprot': match.get('target_uniprot', ''),
                                     'resno': int(target_id.split('_')[-1]) if '_' in target_id else 0,
-                                    'siteType': match.get('site_type', ''),
-                                    'motif': match.get('motif', ''),
-                                    'mean_plddt': match.get('mean_plddt', 0),
-                                    'site_plddt': match.get('site_plddt', 0),
-                                    'meanPLDDT': match.get('mean_plddt', 0),
-                                    'nearby_count': match.get('nearby_count', 0),
-                                    'nearbyCount': match.get('nearby_count', 0),
-                                    'surface_accessibility': match.get('surface_accessibility', 0),
-                                    'surfaceAccessibility': match.get('surface_accessibility', 0),
-                                    'is_known': match.get('is_known', False),
-                                    'is_known_phosphosite': match.get('is_known_phosphosite', 0),
                                     'is_target': True,  # Flag to identify this as a target site
                                     'source_site': site_name,  # Reference to the source site
-                                    'similarity': match.get('similarity', 0),
                                     'rmsd': match.get('rmsd', 0),
                                     'match_type': 'structural'
                                 }
                                 
-                                # Add kinase information if available
-                                if 'known_kinase' in match:
-                                    target_site['known_kinase'] = match['known_kinase']
-                                    target_site['known_kinases'] = match['known_kinase']
-                                
-                                # Add secondary structure and other structural information
-                                if 'secondary_structure' in match:
-                                    target_site['secondary_structure'] = match['secondary_structure']
-                                    
-                                if 'hydrophobic_ratio' in match:
-                                    target_site['hydrophobic_ratio'] = match['hydrophobic_ratio']
-                                    target_site['hydrophobicityScore'] = match['hydrophobic_ratio'] * 100
-                                
-                                # Add any other fields that are available in the match
+                                # Add ALL fields from the match
                                 for key, value in match.items():
-                                    if key not in target_site and key not in ['target_id', 'target_uniprot', 'target_site']:
+                                    # Skip keys we've already processed or that would overwrite critical data
+                                    if key not in ['target_id', 'target_uniprot', 'target_site']:
                                         target_site[key] = value
                                 
                                 # Add to the phosphosites_structure list
@@ -923,8 +1015,6 @@ def phosphosite_analysis():
                 else:
                     # If no matches or no phosphosites, just use original phosphosites
                     results['phosphosites_structure'] = [site.copy() for site in results.get('phosphosites', [])]
-
-
                 
                 # STEP 5: Find sequence similarity matches for phosphosites
                 if results['phosphosites']:
@@ -1239,8 +1329,6 @@ def phosphosite_analysis():
             # Log the removal for debugging purposes
             logger.info(f"Removed unwanted fields ({', '.join(fields_to_remove)}) from all result objects")
 
-            
-            
             # Generate structural network visualization
             network_visualization = create_phosphosite_network_visualization(
                 results['protein_info']['uniprot_id'],
@@ -1257,44 +1345,6 @@ def phosphosite_analysis():
                 results['sequence_matches']
             )
             
-            # Create kinase analysis for the protein's phosphosites
-            # Create kinase analysis for the protein's phosphosites
-            if results['phosphosites'] and (results['structural_matches'] or results['sequence_matches']):
-                try:
-                    # Generate comprehensive kinase report
-                    kinase_report = create_protein_kinase_report(
-                        results['protein_info']['uniprot_id'],
-                        results['phosphosites'],
-                        structural_matches=results['structural_matches'],
-                        sequence_matches=results['sequence_matches'],
-                        match_type="combined",  # Use both structural and sequence matches
-                        include_heatmap=True,
-                        include_family_analysis=True,
-                        top_n_kinases=10
-                    )
-                    
-                    # Generate HTML report for display
-                    kinase_html = get_html_protein_kinase_report(kinase_report)
-                    
-                    # Add to results
-                    results['kinase_report'] = kinase_report
-                    results['kinase_html'] = kinase_html
-                    
-                    # Also generate a standalone kinase heatmap for the top 10 sites
-                    kinase_heatmap = get_proteins_kinase_heatmap(
-                        results['protein_info']['uniprot_id'],
-                        results['phosphosites'][:10],  # Limit to top 10 sites for performance
-                        structural_matches=results['structural_matches'],
-                        sequence_matches=results['sequence_matches'],
-                        match_type="structural"  # Use structural matches for the heatmap
-                    )
-                    results['kinase_heatmap'] = kinase_heatmap
-                except Exception as e:
-                    logger.error(f"Error generating kinase analysis: {e}")
-                    results['kinase_html'] = f"<div class='alert alert-warning'>Error generating kinase analysis: {str(e)}</div>"
-            else:
-                results['kinase_html'] = "<div class='alert alert-info'>No phosphosite data available for kinase analysis.</div>"
-
             from itertools import islice
             def pretty_print_first_kvp(dictionary, label, limit=5):
                 print(f"\n{label}")
@@ -1311,17 +1361,98 @@ def phosphosite_analysis():
             # Usage
             pretty_print_first_kvp(results['structural_matches'], "STRUCTURAL_MATCH DATA")
             pretty_print_first_kvp(results['sequence_matches'], "SEQUENCE_MATCH DATA")
+            print("PHOSPHOSITES DATA")
+            print(results['phosphosites'][:5])
+
+            # Generate Cantley Kinase Score visualizations
+            if results['phosphosites']:
+                # Process structural matches for kinase scoring
+                structural_scores = {}
+                all_structural_processed = []
+                
+                if results.get('structural_matches'):
+                    for site_name, matches in results['structural_matches'].items():
+                        # Process matches for this site
+                        scores, processed = process_matches_for_kinase_scoring(
+                            matches, match_type='structural'
+                        )
+                        structural_scores[site_name] = scores
+                        all_structural_processed.extend(processed)
+                        
+                        # Log results
+                        logger.info(f"Processed {len(processed)} structural matches for {site_name} with kinase data")
+                
+                # Process sequence matches for kinase scoring
+                sequence_scores = {}
+                all_sequence_processed = []
+                
+                if results.get('sequence_matches'):
+                    for site_name, matches in results['sequence_matches'].items():
+                        # Process matches for this site
+                        scores, processed = process_matches_for_kinase_scoring(
+                            matches, match_type='sequence'
+                        )
+                        sequence_scores[site_name] = scores
+                        all_sequence_processed.extend(processed)
+                        
+                        # Log results
+                        logger.info(f"Processed {len(processed)} sequence matches for {site_name} with kinase data")
+                
+                # Generate kinase report
+                kinase_report = create_protein_kinase_report(
+                    results['protein_info']['uniprot_id'],
+                    results['phosphosites'],
+                    results['structural_matches'],
+                    results['sequence_matches']
+                )
+                
+                # Generate HTML for kinase report
+                results['kinase_html'] = get_html_protein_kinase_report(kinase_report)
+                
+                # Create site selector UI
+                site_selector_html = create_site_selector_ui(
+                    results['phosphosites'],
+                    results['structural_matches'],
+                    results['sequence_matches'],
+                    active_site=None  # No site selected initially
+                )
+                
+                # Store in results
+                results['site_selector_html'] = site_selector_html
+                
+                # Store in session for API access
+                # With these lines:
+                cache_key = results['protein_info']['uniprot_id']
+                MATCH_CACHE[cache_key] = {
+                    'structural_matches': results['structural_matches'],
+                    'sequence_matches': results['sequence_matches'],
+                    'timestamp': time.time()  # Add timestamp for potential expiration
+                }
+
+                # Store just the protein ID in the session
+                session['current_protein'] = results['protein_info']['uniprot_id']
+                
+                # Initialize empty site analysis container
+                results['site_analysis_html'] = """
+                <div id="site-analysis">
+                    <div class="alert alert-info">
+                        Select a phosphosite from the dropdown above to view kinase analysis.
+                    </div>
+                </div>
+                """
+            
             return render_template('phosphosite.html', 
-                      protein_info=results['protein_info'],
-                      phosphosites=results['phosphosites'],
-                      phosphosites_html=results.get('phosphosites_html'),
-                      structural_matches=results['structural_matches'],
-                      sequence_matches=results.get('sequence_matches'),
-                      network_visualization=network_visualization,
-                      sequence_network_visualization=sequence_network_visualization,
-                      kinase_html=results.get('kinase_html'),  # Add this
-                      kinase_heatmap=results.get('kinase_heatmap'),  # Add this
-                      error=results.get('error'))
+                          protein_info=results['protein_info'],
+                          phosphosites=results['phosphosites'],
+                          phosphosites_html=results.get('phosphosites_html'),
+                          structural_matches=results['structural_matches'],
+                          sequence_matches=results.get('sequence_matches'),
+                          network_visualization=network_visualization,
+                          sequence_network_visualization=sequence_network_visualization,
+                          kinase_html=results.get('kinase_html'),
+                          site_selector_html=results.get('site_selector_html'),
+                          site_analysis_html=results.get('site_analysis_html'),
+                          error=results.get('error'))
                 
         except Exception as e:
             print(f"Error in phosphosite analysis: {e}")
@@ -1332,6 +1463,8 @@ def phosphosite_analysis():
     
     # GET request - show empty form
     return render_template('phosphosite.html')
+
+
 
 # Add this to app.py
 @app.route('/api/sequence_matches/<site_id>', methods=['GET'])
